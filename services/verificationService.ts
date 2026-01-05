@@ -4,11 +4,43 @@ import { validateCrossover as validateWithGemini } from './geminiService';
 // Redefined here to avoid static import of localDb
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// Helper to title case names (e.g. "roberto baggio" -> "Roberto Baggio")
+const titleCase = (str: string) => {
+  return str.split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+};
+
 interface VerificationResult {
   isValid: boolean;
   source: 'LOCAL' | 'AI';
   history?: string[];
 }
+
+// Get all players who played for both teams from local DB
+export const getMatchingPlayers = async (team1: string, team2: string): Promise<string[]> => {
+  const normalizedTeam1 = normalize(team1);
+  const normalizedTeam2 = normalize(team2);
+  const matches: string[] = [];
+
+  try {
+    const module = await import('../data/localDb');
+    const LOCAL_PLAYER_DB = module.LOCAL_PLAYER_DB;
+
+    for (const [player, data] of Object.entries(LOCAL_PLAYER_DB)) {
+      const teams = data.teams.map(t => normalize(t));
+      
+      // Check crossover
+      if (teams.some(t => t.includes(normalizedTeam1)) && teams.some(t => t.includes(normalizedTeam2))) {
+        matches.push(titleCase(player));
+      }
+    }
+  } catch (error) {
+    console.error("Error searching local DB:", error);
+  }
+  
+  return matches.sort();
+};
 
 export const verifyAnswer = async (
   team1: string, 

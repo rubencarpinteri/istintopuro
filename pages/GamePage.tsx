@@ -5,7 +5,7 @@ import { TeamCard } from '../components/TeamCard';
 import { TEAMS } from '../constants';
 import { GameState, Team } from '../types';
 import { getAIAnswers } from '../services/geminiService';
-import { verifyAnswer } from '../services/verificationService';
+import { verifyAnswer, getMatchingPlayers } from '../services/verificationService';
 
 // Color generator for teams not in constants
 const generateColor = (str: string) => {
@@ -151,9 +151,29 @@ const GamePage: React.FC = () => {
     }
   };
 
-  const handleAIWin = (answer: string) => {
+  const handleAIWin = async (answer: string) => {
+    // Calculate stats before showing message
+    let extraText = '';
+    if (userTeam && opponentTeam) {
+        try {
+            const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
+            const total = allMatches.length;
+            
+            // Check if the AI's answer (which is valid) is in the list to calculate "more"
+            // The AI answer comes from getAIAnswers which pulls from DB or Gemini.
+            const isAnswerInDb = allMatches.some(p => p.toLowerCase() === answer.toLowerCase());
+            const remaining = isAnswerInDb ? total - 1 : total;
+            
+            if (remaining > 0) {
+                extraText = ` (and ${remaining} more!)`;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
-    setMessages(prev => [...prev, { text: `🤖 AI answered: ${answer}`, isError: true }]);
+    setMessages(prev => [...prev, { text: `🤖 AI answered: ${answer} ✅${extraText}`, isError: true }]);
     setGameState(GameState.ROUND_END);
   };
 
