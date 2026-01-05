@@ -89,14 +89,20 @@ const GamePage: React.FC = () => {
   };
 
   const startAITurn = async (team1: string, team2: string) => {
+    // This now queries the Local DB first
     const answers = await getAIAnswers(team1, team2);
     aiPotentialAnswers.current = answers;
 
     if (answers.length > 0) {
-      const thinkTime = Math.random() * 15000 + 5000;
+      // AI "thinks" between 10 and 35 seconds to give user a chance but keep pressure
+      const thinkTime = Math.random() * 25000 + 10000;
       gameLoopRef.current = setTimeout(() => {
+        // AI picks one answer
         handleAIWin(answers[0]);
       }, thinkTime);
+    } else {
+        console.warn("AI found no answers for this matchup.");
+        // Optional: Could display a message saying AI is stumped, giving user infinite time.
     }
   };
 
