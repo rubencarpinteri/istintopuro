@@ -31,6 +31,14 @@ const GamePage: React.FC = () => {
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Preload DB
+  useEffect(() => {
+    // Start loading the huge DB chunk in background so it's ready when user submits
+    import('../data/localDb').then(() => {
+        console.log("Local DB preloaded");
+    }).catch(e => console.error("Failed to preload DB", e));
+  }, []);
+
   // Timer Effect
   useEffect(() => {
     if (gameState === GameState.SELECTION && timeLeft > 0) {

@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Lazy load components that use the massive localDb.ts
 // This ensures the huge JSON data is only downloaded when the user goes to these pages,
@@ -25,17 +26,19 @@ const App: React.FC = () => {
            }}>
       </div>
       
-      <Router>
-        <Suspense fallback={<LoadingScreen />}>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/game" element={<GamePage />} />
-            {/* Secret route to process your CSVs */}
-            <Route path="/convert" element={<DataConverter />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
-      </Router>
+      <ErrorBoundary>
+        <Router>
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/game" element={<GamePage />} />
+              {/* Secret route to process your CSVs */}
+              <Route path="/convert" element={<DataConverter />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
+        </Router>
+      </ErrorBoundary>
     </div>
   );
 };
