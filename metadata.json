@@ -1,0 +1,5 @@
+{
+  "name": "Calcio MiniGame AI",
+  "description": "A real-time Serie A crossover game where you race against Gemini AI to name players who played for two specific clubs.",
+  "requestFramePermissions": []
+}
