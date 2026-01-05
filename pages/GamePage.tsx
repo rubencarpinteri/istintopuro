@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { TeamCard } from '../components/TeamCard';
@@ -6,6 +6,16 @@ import { TEAMS } from '../constants';
 import { GameState, Team } from '../types';
 import { getAIAnswers } from '../services/geminiService';
 import { verifyAnswer } from '../services/verificationService';
+
+// Color generator for teams not in constants
+const generateColor = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0, 6 - c.length) + c;
+};
 
 const GamePage: React.FC = () => {
   const navigate = useNavigate();
@@ -15,6 +25,11 @@ const GamePage: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(30);
   const [inputValue, setInputValue] = useState('');
   
+  // Data State
+  const [availableTeams, setAvailableTeams] = useState<Team[]>(TEAMS);
+  const [teamFilter, setTeamFilter] = useState('');
+  const [isDbLoaded, setIsDbLoaded] = useState(false);
+
   // Update message state to include optional history array
   const [messages, setMessages] = useState<{
     text: string, 
@@ -31,11 +46,40 @@ const GamePage: React.FC = () => {
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Preload DB
+  // Load DB and extract all teams
   useEffect(() => {
-    // Start loading the huge DB chunk in background so it's ready when user submits
-    import('../data/localDb').then(() => {
-        console.log("Local DB preloaded");
+    import('../data/localDb').then((module) => {
+        const db = module.LOCAL_PLAYER_DB;
+        const uniqueTeamNames = new Set<string>();
+        
+        // 1. Extract all unique team names from the DB
+        Object.values(db).forEach((player: any) => {
+            if (Array.isArray(player.teams)) {
+                player.teams.forEach((t: string) => uniqueTeamNames.add(t));
+            }
+        });
+
+        // 2. Convert to Team objects, preserving existing colors if possible
+        const allDbTeams: Team[] = Array.from(uniqueTeamNames).map(name => {
+            // Check if we have a preset configuration for this team
+            const preset = TEAMS.find(t => t.name.toLowerCase() === name.toLowerCase());
+            if (preset) return preset;
+
+            // Otherwise generate a consistent color
+            return {
+                id: name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+                name: name,
+                colors: [generateColor(name), '#000000'] // Generated + Black
+            };
+        });
+
+        // 3. Sort alphabetically
+        allDbTeams.sort((a, b) => a.name.localeCompare(b.name));
+
+        setAvailableTeams(allDbTeams);
+        setIsDbLoaded(true);
+        console.log("Local DB teams loaded:", allDbTeams.length);
+
     }).catch(e => console.error("Failed to preload DB", e));
   }, []);
 
@@ -51,11 +95,12 @@ const GamePage: React.FC = () => {
 
   // AI Selection & Setup Effect
   useEffect(() => {
-    if (gameState === GameState.SELECTION) {
-      const randomTeam = TEAMS[Math.floor(Math.random() * TEAMS.length)];
+    if (gameState === GameState.SELECTION && availableTeams.length > 0) {
+      // Pick random opponent from ALL available teams
+      const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
       setOpponentTeam(randomTeam);
     }
-  }, [gameState]);
+  }, [gameState, availableTeams]);
 
   // Game Start Effect
   useEffect(() => {
@@ -69,8 +114,8 @@ const GamePage: React.FC = () => {
   }, [gameState]);
 
   const handleAutoSelect = () => {
-    if (!userTeam) {
-      const random = TEAMS[Math.floor(Math.random() * TEAMS.length)];
+    if (!userTeam && availableTeams.length > 0) {
+      const random = availableTeams[Math.floor(Math.random() * availableTeams.length)];
       setUserTeam(random);
     }
     startReveal();
@@ -154,11 +199,20 @@ const GamePage: React.FC = () => {
 
   const nextRound = () => {
     setUserTeam(null);
-    setOpponentTeam(null);
+    // Pick new random opponent
+    if (availableTeams.length > 0) {
+        setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
+    }
     setMessages([]);
     setTimeLeft(30);
+    setTeamFilter('');
     setGameState(GameState.SELECTION);
   };
+
+  const filteredTeams = useMemo(() => {
+    if (!teamFilter) return availableTeams;
+    return availableTeams.filter(t => t.name.toLowerCase().includes(teamFilter.toLowerCase()));
+  }, [availableTeams, teamFilter]);
 
   return (
     <div className="min-h-screen flex flex-col max-w-lg mx-auto p-4 relative z-10">
@@ -177,24 +231,46 @@ const GamePage: React.FC = () => {
 
       {/* PHASE: SELECTION */}
       {gameState === GameState.SELECTION && (
-        <div className="flex-1 flex flex-col">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold mb-2">Select Your Team</h2>
-            <div className="inline-block bg-[#0F1419] border border-[#0066CC] text-[#0066CC] px-4 py-1 rounded-full font-mono font-bold">
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <div className="text-center mb-4 shrink-0">
+            <h2 className="text-2xl font-bold mb-1">Select Your Team</h2>
+            <div className="inline-block bg-[#0F1419] border border-[#0066CC] text-[#0066CC] px-4 py-1 rounded-full font-mono font-bold text-sm mb-3">
               00:{timeLeft.toString().padStart(2, '0')}
             </div>
+            
+            {/* Search Bar */}
+            <input 
+                type="text"
+                placeholder="Search teams..."
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                className="w-full bg-[#1E2732] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-[#0066CC] transition-colors"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3 overflow-y-auto pb-20 pr-1 max-h-[60vh]">
-            {TEAMS.map(team => (
-              <TeamCard 
-                key={team.id}
-                team={team}
-                selected={userTeam?.id === team.id}
-                onClick={() => setUserTeam(team)}
-              />
-            ))}
+
+          {/* Teams Grid - Denser for visibility */}
+          <div className="flex-1 overflow-y-auto min-h-0 mb-4 pr-1">
+             {!isDbLoaded && (
+                 <div className="text-center py-8 text-gray-500 animate-pulse">Loading all teams from database...</div>
+             )}
+             
+             <div className="grid grid-cols-3 gap-2">
+                {filteredTeams.map(team => (
+                <TeamCard 
+                    key={team.id}
+                    team={team}
+                    selected={userTeam?.id === team.id}
+                    onClick={() => setUserTeam(team)}
+                    compact={true}
+                />
+                ))}
+            </div>
+            {filteredTeams.length === 0 && isDbLoaded && (
+                <div className="text-center py-8 text-gray-500">No teams found matching "{teamFilter}"</div>
+            )}
           </div>
-          <div className="fixed bottom-6 left-0 right-0 px-6 max-w-lg mx-auto">
+
+          <div className="shrink-0 pt-2 pb-6">
             <Button fullWidth onClick={startReveal} disabled={!userTeam}>Confirm Selection</Button>
           </div>
         </div>
@@ -205,16 +281,19 @@ const GamePage: React.FC = () => {
         <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-pulse">
           <h2 className="text-3xl font-bold">MATCHUP</h2>
           <div className="w-full flex items-center justify-between px-4">
-             <div className="text-center">
-                <div className="w-24 h-24 rounded-full mb-2 border-4 border-white shadow-xl mx-auto"
-                  style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]}, ${userTeam?.colors[1]})` }} />
-                <p className="font-bold text-xl">{userTeam?.name}</p>
+             <div className="text-center w-5/12">
+                <div className="w-20 h-20 rounded-full mb-3 border-4 border-white shadow-xl mx-auto flex items-center justify-center text-xs font-bold"
+                  style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]}, ${userTeam?.colors[1]})` }}>
+                    {/* Fallback if no logo, just color */}
+                </div>
+                <p className="font-bold text-lg leading-tight">{userTeam?.name}</p>
              </div>
-             <div className="text-4xl font-mono font-bold text-gray-500">VS</div>
-             <div className="text-center">
-                <div className="w-24 h-24 rounded-full mb-2 border-4 border-white shadow-xl mx-auto"
-                  style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]}, ${opponentTeam?.colors[1]})` }} />
-                <p className="font-bold text-xl">{opponentTeam?.name}</p>
+             <div className="text-2xl font-mono font-bold text-gray-500">VS</div>
+             <div className="text-center w-5/12">
+                <div className="w-20 h-20 rounded-full mb-3 border-4 border-white shadow-xl mx-auto flex items-center justify-center text-xs font-bold"
+                  style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]}, ${opponentTeam?.colors[1]})` }}>
+                </div>
+                <p className="font-bold text-lg leading-tight">{opponentTeam?.name}</p>
              </div>
           </div>
         </div>
@@ -222,20 +301,25 @@ const GamePage: React.FC = () => {
 
       {/* PHASE: PLAYING */}
       {(gameState === GameState.PLAYING || gameState === GameState.ROUND_END) && (
-        <div className="flex-1 flex flex-col">
-           <div className="bg-[#1E2732] rounded-xl p-4 mb-6 border border-gray-700 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full" style={{ background: userTeam?.colors[0] }} />
-                <span className="font-bold">{userTeam?.name}</span>
+        <div className="flex-1 flex flex-col min-h-0">
+           <div className="bg-[#1E2732] rounded-xl p-4 mb-4 border border-gray-700 flex justify-between items-center shadow-md shrink-0">
+              <div className="flex items-center gap-2 max-w-[40%]">
+                <div className="w-8 h-8 rounded-full shrink-0 border border-white/20" style={{ background: userTeam?.colors[0] }} />
+                <span className="font-bold truncate text-sm">{userTeam?.name}</span>
               </div>
-              <span className="text-gray-500 font-mono text-xs">CROSSOVER</span>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-right">{opponentTeam?.name}</span>
-                <div className="w-8 h-8 rounded-full" style={{ background: opponentTeam?.colors[0] }} />
+              <span className="text-gray-500 font-mono text-[10px] uppercase px-2">Crossover</span>
+              <div className="flex items-center gap-2 max-w-[40%] justify-end">
+                <span className="font-bold truncate text-sm text-right">{opponentTeam?.name}</span>
+                <div className="w-8 h-8 rounded-full shrink-0 border border-white/20" style={{ background: opponentTeam?.colors[0] }} />
               </div>
            </div>
 
-           <div className="flex-1 overflow-y-auto mb-4 space-y-2">
+           <div className="flex-1 overflow-y-auto mb-4 space-y-2 pr-1 min-h-0">
+              {messages.length === 0 && (
+                  <div className="text-center text-gray-500 py-10 text-sm">
+                      Waiting for your answer...
+                  </div>
+              )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`p-3 rounded-lg text-sm font-medium flex flex-col ${
                     msg.isSuccess ? 'bg-green-500/20 text-green-200 border border-green-500/50' : 
@@ -244,7 +328,7 @@ const GamePage: React.FC = () => {
                   }`}>
                   <div className="flex justify-between items-center w-full">
                     <span>{msg.text}</span>
-                    {msg.source && <span className="text-[10px] opacity-75 font-mono border border-current px-1 rounded">{msg.source === 'LOCAL' ? '⚡ DB' : '🤖 AI'}</span>}
+                    {msg.source && <span className="text-[10px] opacity-75 font-mono border border-current px-1 rounded ml-2 whitespace-nowrap">{msg.source === 'LOCAL' ? '⚡ DB' : '🤖 AI'}</span>}
                   </div>
                   {/* Display History if available */}
                   {msg.history && msg.history.length > 0 && (
@@ -259,7 +343,7 @@ const GamePage: React.FC = () => {
            </div>
 
            {gameState === GameState.PLAYING ? (
-             <form onSubmit={handleUserSubmit} className="mt-auto">
+             <form onSubmit={handleUserSubmit} className="mt-auto shrink-0 pb-4">
                <div className="relative">
                  <input
                    ref={inputRef}
@@ -271,18 +355,20 @@ const GamePage: React.FC = () => {
                    autoComplete="off"
                    autoFocus
                  />
-                 <button type="submit" className="absolute right-2 top-2 bottom-2 bg-[#0066CC] px-4 rounded-lg font-bold">GO</button>
+                 <button type="submit" className="absolute right-2 top-2 bottom-2 bg-[#0066CC] px-4 rounded-lg font-bold shadow-lg">GO</button>
                </div>
              </form>
            ) : (
-             <div className="mt-auto space-y-3">
-               <div className="bg-[#1E2732] p-4 rounded-xl text-center">
+             <div className="mt-auto space-y-3 shrink-0 pb-6">
+               <div className="bg-[#1E2732] p-4 rounded-xl text-center border border-gray-700">
                  <h3 className="text-xl font-bold text-white">
                    {messages.find(m => m.isSuccess) ? 'Point for You!' : 'Point for AI'}
                  </h3>
                </div>
-               <Button fullWidth onClick={nextRound}>Next Round</Button>
-               <Button fullWidth variant="secondary" onClick={() => navigate('/')}>Back to Menu</Button>
+               <div className="grid grid-cols-2 gap-3">
+                    <Button fullWidth onClick={nextRound}>Next Round</Button>
+                    <Button fullWidth variant="secondary" onClick={() => navigate('/')}>Back to Menu</Button>
+               </div>
              </div>
            )}
         </div>
