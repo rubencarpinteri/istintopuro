@@ -40,6 +40,7 @@ const GamePage: React.FC = () => {
   }[]>([]);
   
   const [scores, setScores] = useState({ user: 0, opponent: 0 });
+  const [possibleAnswersCount, setPossibleAnswersCount] = useState<number | null>(null);
   
   // Refs for AI behavior
   const aiPotentialAnswers = useRef<string[]>([]);
@@ -55,7 +56,12 @@ const GamePage: React.FC = () => {
         // 1. Extract all unique team names from the DB
         Object.values(db).forEach((player: any) => {
             if (Array.isArray(player.teams)) {
-                player.teams.forEach((t: string) => uniqueTeamNames.add(t));
+                player.teams.forEach((t: string) => {
+                    // Typo fix on the fly for the list
+                    if (t.toLowerCase() !== 'sampdroria') {
+                        uniqueTeamNames.add(t);
+                    }
+                });
             }
         });
 
@@ -106,7 +112,7 @@ const GamePage: React.FC = () => {
   useEffect(() => {
     if (gameState === GameState.PLAYING && userTeam && opponentTeam) {
       setTimeout(() => inputRef.current?.focus(), 100);
-      startAITurn(userTeam.name, opponentTeam.name);
+      checkPossibilitiesAndStart(userTeam.name, opponentTeam.name);
     }
     return () => {
       if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
@@ -133,21 +139,31 @@ const GamePage: React.FC = () => {
     }, 1000);
   };
 
-  const startAITurn = async (team1: string, team2: string) => {
-    // This now queries the Local DB first
+  const checkPossibilitiesAndStart = async (team1: string, team2: string) => {
+    // 1. Check total possibilities first
+    const allMatches = await getMatchingPlayers(team1, team2);
+    setPossibleAnswersCount(allMatches.length);
+
+    if (allMatches.length === 0) {
+        setMessages([{ 
+            text: `⚠️ Impossible Matchup! No players found who played for both ${team1} and ${team2} in our database.`, 
+            isError: true 
+        }]);
+        // Do not start AI turn, basically game over or draw
+        return;
+    }
+
+    // 2. Start AI Turn
     const answers = await getAIAnswers(team1, team2);
     aiPotentialAnswers.current = answers;
 
     if (answers.length > 0) {
-      // AI "thinks" between 10 and 35 seconds to give user a chance but keep pressure
+      // AI "thinks" between 10 and 35 seconds
       const thinkTime = Math.random() * 25000 + 10000;
       gameLoopRef.current = setTimeout(() => {
         // AI picks one answer
         handleAIWin(answers[0]);
       }, thinkTime);
-    } else {
-        console.warn("AI found no answers for this matchup.");
-        // Optional: Could display a message saying AI is stumped, giving user infinite time.
     }
   };
 
@@ -159,8 +175,7 @@ const GamePage: React.FC = () => {
             const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
             const total = allMatches.length;
             
-            // Check if the AI's answer (which is valid) is in the list to calculate "more"
-            // The AI answer comes from getAIAnswers which pulls from DB or Gemini.
+            // Check if the AI's answer is in the list
             const isAnswerInDb = allMatches.some(p => p.toLowerCase() === answer.toLowerCase());
             const remaining = isAnswerInDb ? total - 1 : total;
             
@@ -181,27 +196,36 @@ const GamePage: React.FC = () => {
     e.preventDefault();
     if (!inputValue.trim() || !userTeam || !opponentTeam) return;
 
-    const answer = inputValue.trim();
+    const rawInput = inputValue.trim();
     setInputValue('');
     
     // UI Feedback immediately
-    setMessages(prev => [...prev, { text: `Checking ${answer}...` }]);
+    setMessages(prev => [...prev, { text: `Checking ${rawInput}...` }]);
 
     // 1. Optimistic check (if AI already found it)
-    const isKnownValid = aiPotentialAnswers.current.some(a => a.toLowerCase().includes(answer.toLowerCase()));
+    // We check if input matches any AI answer (checking substrings for surnames)
+    const isKnownValid = aiPotentialAnswers.current.some(a => 
+        a.toLowerCase().includes(rawInput.toLowerCase()) || 
+        rawInput.toLowerCase().includes(a.toLowerCase())
+    );
     
     if (isKnownValid) {
-       handleSuccess(answer, 'AI Match', []);
+       // We assume if AI found it, it's correct. We just format it nicely.
+       // Try to find the full name from the AI list
+       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(rawInput.toLowerCase())) || rawInput;
+       handleSuccess(matchName, 'AI Match', []);
        return;
     }
 
     // 2. Full Verification (Local DB -> then AI)
-    const result = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
+    const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
 
     if (result.isValid) {
-      handleSuccess(answer, result.source || 'Verified', result.history);
+      // Use the corrected name from DB (e.g. "Luca Toni" if user typed "Toni")
+      const displayName = result.correctedName || rawInput;
+      handleSuccess(displayName, result.source || 'Verified', result.history);
     } else {
-      setMessages(prev => [...prev, { text: `❌ ${answer} is incorrect`, isError: true }]);
+      setMessages(prev => [...prev, { text: `❌ ${rawInput} is incorrect`, isError: true }]);
     }
   };
 
@@ -224,6 +248,7 @@ const GamePage: React.FC = () => {
         setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
     }
     setMessages([]);
+    setPossibleAnswersCount(null);
     setTimeLeft(30);
     setTeamFilter('');
     setGameState(GameState.SELECTION);
@@ -337,7 +362,9 @@ const GamePage: React.FC = () => {
            <div className="flex-1 overflow-y-auto mb-4 space-y-2 pr-1 min-h-0">
               {messages.length === 0 && (
                   <div className="text-center text-gray-500 py-10 text-sm">
-                      Waiting for your answer...
+                      {possibleAnswersCount === 0 
+                        ? "Checking database..." 
+                        : "Waiting for your answer..."}
                   </div>
               )}
               {messages.map((msg, idx) => (
@@ -370,19 +397,20 @@ const GamePage: React.FC = () => {
                    type="text"
                    value={inputValue}
                    onChange={(e) => setInputValue(e.target.value)}
-                   className="w-full bg-[#0F1419] border-2 border-[#0066CC] rounded-xl px-4 py-4 text-lg font-bold text-white focus:outline-none focus:ring-4 focus:ring-[#0066CC]/30 placeholder-gray-600"
-                   placeholder="Type surname..."
+                   disabled={possibleAnswersCount === 0}
+                   className="w-full bg-[#0F1419] border-2 border-[#0066CC] rounded-xl px-4 py-4 text-lg font-bold text-white focus:outline-none focus:ring-4 focus:ring-[#0066CC]/30 placeholder-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                   placeholder={possibleAnswersCount === 0 ? "No answers possible" : "Type surname..."}
                    autoComplete="off"
                    autoFocus
                  />
-                 <button type="submit" className="absolute right-2 top-2 bottom-2 bg-[#0066CC] px-4 rounded-lg font-bold shadow-lg">GO</button>
+                 <button type="submit" disabled={possibleAnswersCount === 0} className="absolute right-2 top-2 bottom-2 bg-[#0066CC] px-4 rounded-lg font-bold shadow-lg disabled:opacity-50">GO</button>
                </div>
              </form>
            ) : (
              <div className="mt-auto space-y-3 shrink-0 pb-6">
                <div className="bg-[#1E2732] p-4 rounded-xl text-center border border-gray-700">
                  <h3 className="text-xl font-bold text-white">
-                   {messages.find(m => m.isSuccess) ? 'Point for You!' : 'Point for AI'}
+                   {messages.find(m => m.isSuccess) ? 'Point for You!' : (possibleAnswersCount === 0 ? 'Draw (No Players)' : 'Point for AI')}
                  </h3>
                </div>
                <div className="grid grid-cols-2 gap-3">
