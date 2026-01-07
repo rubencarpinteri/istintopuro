@@ -397,20 +397,20 @@ const GamePage: React.FC = () => {
       {/* PHASE: REVEAL */}
       {gameState === GameState.REVEAL && (
         <div className="flex-1 flex flex-col items-center justify-center space-y-8 retro-box bg-black p-4">
-          <h2 className="text-2xl font-pixel text-yellow-400 blink">VERSUS</h2>
+          <h2 className="text-4xl font-pixel text-yellow-400 blink">&</h2>
           <div className="w-full flex items-center justify-between px-2">
              <div className="text-center w-5/12">
-                <div className="w-20 h-20 mb-4 border-4 border-blue-500 mx-auto bg-gray-800 flex items-center justify-center">
-                    <div className="w-16 h-16" style={{ background: userTeam?.colors[0] }}></div>
+                <div className="w-20 h-20 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center">
+                    <div className="w-16 h-16" style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]} 50%, ${userTeam?.colors[1]} 50%)` }}></div>
                 </div>
                 <p className="font-pixel text-xs" style={{ color: userTeam?.colors[0] || 'white' }}>
                     {userTeam?.name}
                 </p>
              </div>
-             <div className="text-2xl font-pixel text-white">&</div>
+             {/* Center element removed as per request to have ONLY & in title */}
              <div className="text-center w-5/12">
-                <div className="w-20 h-20 mb-4 border-4 border-red-500 mx-auto bg-gray-800 flex items-center justify-center">
-                    <div className="w-16 h-16" style={{ background: opponentTeam?.colors[0] }}></div>
+                <div className="w-20 h-20 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center">
+                    <div className="w-16 h-16" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
                 </div>
                 <p className="font-pixel text-xs" style={{ color: opponentTeam?.colors[0] || 'white' }}>
                     {opponentTeam?.name}
@@ -426,7 +426,7 @@ const GamePage: React.FC = () => {
            {/* Header Info - Using Actual Team Colors */}
            <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-[10px] font-pixel">
               <span style={{ color: userTeam?.colors[0] }}>{userTeam?.name}</span>
-              <span className="text-gray-500">VS</span>
+              <span></span> {/* Empty span to maintain flex spacing without VS text */}
               <span style={{ color: opponentTeam?.colors[0] }}>{opponentTeam?.name}</span>
            </div>
 

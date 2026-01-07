@@ -19,7 +19,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({ team, selected, onClick, dis
         relative flex flex-col items-center justify-start transition-all border-2 w-full
         ${compact ? 'p-1.5 h-16 sm:h-20' : 'p-4 h-32'}
         ${selected 
-            ? 'bg-yellow-400 border-white text-black scale-105 z-10 shadow-[0_0_15px_rgba(255,255,255,0.3)]' 
+            ? 'bg-green-500 border-white text-black scale-105 z-10 shadow-[0_0_15px_rgba(34,197,94,0.5)]' 
             : 'bg-[#1a1a1a] border-gray-700 text-gray-400 hover:bg-[#252525] hover:border-gray-500 hover:text-white'
         }
         ${disabled ? 'cursor-not-allowed opacity-40 grayscale' : 'cursor-pointer active:scale-95'}
