@@ -510,10 +510,16 @@ const GamePage: React.FC = () => {
                <div className={`p-2 text-center border-2 ${
                    messages.find(m => m.isSuccess) 
                     ? 'bg-green-900 border-green-500 text-green-100' 
-                    : 'bg-red-900 border-red-500 text-red-100'
+                    : messages.find(m => m.isCpuWin)
+                        ? 'bg-red-900 border-red-500 text-red-100'
+                        : 'bg-gray-800 border-gray-500 text-gray-300'
                }`}>
                  <h3 className="font-pixel text-xs">
-                   {messages.find(m => m.isSuccess) ? 'PLAYER 1 WINS ROUND' : 'CPU WINS ROUND'}
+                   {messages.find(m => m.isSuccess) 
+                    ? 'PLAYER 1 WINS ROUND' 
+                    : messages.find(m => m.isCpuWin) 
+                        ? 'CPU WINS ROUND'
+                        : 'DRAW: NO POINTS'}
                  </h3>
                </div>
                <div className="grid grid-cols-2 gap-2">
