@@ -57,8 +57,9 @@ const GamePage: React.FC = () => {
         Object.values(db).forEach((player: any) => {
             if (Array.isArray(player.teams)) {
                 player.teams.forEach((t: string) => {
+                    const tLower = t.toLowerCase();
                     // Typo fix on the fly for the list
-                    if (t.toLowerCase() !== 'sampdroria') {
+                    if (tLower !== 'sampdroria' && tLower !== 'chievi verona') {
                         uniqueTeamNames.add(t);
                     }
                 });
@@ -146,10 +147,11 @@ const GamePage: React.FC = () => {
 
     if (allMatches.length === 0) {
         setMessages([{ 
-            text: `⚠️ Impossible Matchup! No players found who played for both ${team1} and ${team2} in our database.`, 
+            text: `⚠️ Impossible Matchup! No players found who played for ${team1 === team2 ? 'ONLY ' + team1 : 'both ' + team1 + ' and ' + team2} in our database.`, 
             isError: true 
         }]);
-        // Do not start AI turn, basically game over or draw
+        // Allow proceeding to next round without points
+        setGameState(GameState.ROUND_END);
         return;
     }
 

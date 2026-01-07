@@ -23,9 +23,16 @@ export const validateCrossover = async (team1: string, team2: string, playerName
         return false;
     }
 
+    const isSameTeam = normalize(team1) === normalize(team2);
+    let prompt = `True or False: Did football player "${playerName}" play for BOTH ${team1} and ${team2} in their senior career (Serie A context preferred)?`;
+    
+    if (isSameTeam) {
+        prompt = `True or False: Did football player "${playerName}" play ONLY for ${team1} (and no other Italian team) in their senior Serie A career?`;
+    }
+
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: `True or False: Did football player "${playerName}" play for BOTH ${team1} and ${team2} in their senior career (Serie A context preferred)?`,
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -55,11 +62,26 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
     const db = module.LOCAL_PLAYER_DB;
     const t1 = normalize(team1);
     const t2 = normalize(team2);
+    const isSameTeam = t1 === t2;
 
     for (const [player, data] of Object.entries(db)) {
       const teams = data.teams.map(t => normalize(t));
-      // Check if player played for both teams
-      if (teams.some(t => t.includes(t1)) && teams.some(t => t.includes(t2))) {
+      
+      let isValid = false;
+
+      if (isSameTeam) {
+         // One Club Man check: played for target and NO ONE else
+         const playedForTarget = teams.some(t => t.includes(t1) || t1.includes(t));
+         const playedForOthers = teams.some(t => !(t.includes(t1) || t1.includes(t)));
+         isValid = playedForTarget && !playedForOthers;
+      } else {
+         // Crossover check
+         if (teams.some(t => t.includes(t1)) && teams.some(t => t.includes(t2))) {
+             isValid = true;
+         }
+      }
+
+      if (isValid) {
         // Format name: "roberto baggio" -> "Roberto Baggio"
         const formattedName = player.split(' ')
           .map(w => w.charAt(0).toUpperCase() + w.slice(1))
@@ -86,9 +108,16 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
         return [];
     }
 
+    const isSameTeam = normalize(team1) === normalize(team2);
+    let prompt = `List up to 5 football players who played for both ${team1} and ${team2} in Serie A history. Return only surnames.`;
+    
+    if (isSameTeam) {
+        prompt = `List up to 5 football players who are iconic "One Club Men" for ${team1} in Serie A (played only for this club in Italy). Return only surnames.`;
+    }
+
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: `List up to 5 football players who played for both ${team1} and ${team2} in Serie A history. Return only surnames.`,
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
