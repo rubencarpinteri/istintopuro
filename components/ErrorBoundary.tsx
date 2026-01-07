@@ -1,4 +1,3 @@
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
@@ -10,27 +9,25 @@ interface ErrorBoundaryState {
   error?: Error;
 }
 
-// Fixed: Explicitly extend React.Component and ensure generic parameters are applied to correctly type state and props
+/**
+ * Fixed: Explicitly extend Component from react and ensure generic parameters are applied to correctly type state and props.
+ * This resolves issues where 'props' or 'state' might not be correctly recognized by the TypeScript compiler
+ * when using the React namespace directly in some environments.
+ */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fixed: Declaring state explicitly as a class property for better type resolution
-  public state: ErrorBoundaryState = { hasError: false };
+  public state: ErrorBoundaryState = {
+    hasError: false
+  };
 
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
-
-  // Fixed: Static method to catch error and update state for rendering fallback UI
   public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  // Fixed: Catching the error for logging purposes
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
   }
 
-  public render() {
-    // Fixed: state is now correctly typed and recognized from the base class
+  public render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] text-white p-4 text-center">
@@ -48,7 +45,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       );
     }
 
-    // Fixed: props is now correctly typed and recognized from the base class
     return this.props.children;
   }
 }

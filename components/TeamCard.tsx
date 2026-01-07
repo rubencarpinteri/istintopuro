@@ -34,10 +34,10 @@ export const TeamCard: React.FC<TeamCardProps> = ({ team, selected, onClick, dis
         }} 
       />
 
-      <div className="flex items-center justify-center w-full flex-1 min-w-0">
+      <div className="flex items-center justify-center w-full flex-1 min-w-0 px-0.5">
         <span className={`
-            font-pixel leading-none uppercase text-center whitespace-nowrap overflow-hidden text-ellipsis w-full
-            ${compact ? 'text-[9px] sm:text-[10px]' : 'text-xs'}
+            font-pixel leading-tight uppercase text-center w-full break-words whitespace-normal
+            ${compact ? 'text-[8px] sm:text-[9px]' : 'text-xs'}
         `}>
             {team.name}
         </span>

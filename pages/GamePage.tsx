@@ -17,6 +17,15 @@ const generateColor = (str: string) => {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 };
 
+// Helper to sort history chronologically
+const sortHistory = (history: string[]) => {
+  return [...history].sort((a, b) => {
+    const yearA = parseInt(a.match(/\d{4}/)?.[0] || '0');
+    const yearB = parseInt(b.match(/\d{4}/)?.[0] || '0');
+    return yearA - yearB;
+  });
+};
+
 interface GameMessage {
   text?: string;        // For simple messages
   prefix?: string;      // Text before the name
@@ -24,6 +33,7 @@ interface GameMessage {
   suffix?: string;      // Text after the name
   isError?: boolean;
   isSuccess?: boolean;
+  isCpuWin?: boolean;   // New flag for CPU victory style
   source?: string;
   history?: string[];
 }
@@ -219,7 +229,8 @@ const GamePage: React.FC = () => {
             // Retrieve history for AI answer so seasons are shown
             const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
             if (verifyResult.isValid && verifyResult.history) {
-              history = verifyResult.history;
+              // Chronological sort
+              history = sortHistory(verifyResult.history);
             }
         } catch (e) {
             console.error(e);
@@ -231,7 +242,7 @@ const GamePage: React.FC = () => {
       prefix: "> CPU scores with ",
       highlight: answer.toUpperCase(),
       suffix: extraText,
-      isError: true, // Will use specific red in rendering
+      isCpuWin: true, // Use CPU win styling
       history: history 
     }]);
     setGameState(GameState.ROUND_END);
@@ -243,14 +254,15 @@ const GamePage: React.FC = () => {
 
     const rawInput = inputValue.trim();
     setInputValue('');
+    const inputClean = rawInput.toLowerCase();
     
     // UI Feedback immediately
     setMessages(prev => [...prev, { text: `> Analyzing: ${rawInput}...` }]);
 
     // 1. Optimistic check: Did AI already find this player?
     const isKnownValid = aiPotentialAnswers.current.some(a => 
-        a.toLowerCase().includes(rawInput.toLowerCase()) || 
-        rawInput.toLowerCase().includes(a.toLowerCase())
+        a.toLowerCase().includes(inputClean) || 
+        inputClean.includes(a.toLowerCase())
     );
     
     // 2. Full Verification
@@ -260,7 +272,7 @@ const GamePage: React.FC = () => {
       const displayName = result.correctedName || rawInput;
       handleSuccess(displayName, result.source || 'DB', result.history);
     } else if (isKnownValid) {
-       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(rawInput.toLowerCase())) || rawInput;
+       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(inputClean)) || rawInput;
        handleSuccess(matchName, 'AI', []);
     } else {
       setMessages(prev => [...prev, { text: `> REJECTED: ${rawInput} is not valid.`, isError: true }]);
@@ -269,6 +281,7 @@ const GamePage: React.FC = () => {
 
   const handleSuccess = async (answer: string, source: string, history?: string[]) => {
     let extraText = '';
+    let sortedHistory: string[] = [];
     if (userTeam && opponentTeam) {
         const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
         const remaining = allMatches.length - 1; 
@@ -276,6 +289,9 @@ const GamePage: React.FC = () => {
             extraText = ` (...and ${remaining} more!)`;
         } else {
             extraText = ` ... and that's the only one!`;
+        }
+        if (history) {
+            sortedHistory = sortHistory(history);
         }
     }
 
@@ -286,7 +302,7 @@ const GamePage: React.FC = () => {
       suffix: ` is correct!${extraText}`,
       isSuccess: true,
       source,
-      history
+      history: sortedHistory
     }]);
     if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
     setGameState(GameState.ROUND_END);
@@ -417,8 +433,7 @@ const GamePage: React.FC = () => {
            {/* Commentary Log (Terminal Style) */}
            <div 
              ref={scrollRef}
-             className="flex-1 overflow-y-auto mb-2 space-y-2 p-2 bg-black border-2 border-gray-700 font-mono text-sm leading-tight shadow-inner"
-             style={{ fontFamily: "'VT323', monospace", fontSize: "1.2rem" }}
+             className="flex-1 overflow-y-auto mb-2 space-y-2 p-2 bg-black border-2 border-gray-700 font-pixel text-[10px] leading-relaxed shadow-inner"
            >
               {messages.length === 0 && (
                   <div className="text-green-700">
@@ -428,21 +443,21 @@ const GamePage: React.FC = () => {
               )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`
-                    ${msg.isSuccess ? 'text-[#00FF00]' : msg.isError ? 'text-[#FF5555]' : 'text-[#FFFF00]'}
+                    ${msg.isSuccess ? 'text-[#00FF00]' : msg.isError ? 'text-red-500' : msg.isCpuWin ? 'text-white' : 'text-[#FFFF00]'}
                 `}>
-                  <span className={msg.isError || msg.isSuccess ? "font-bold text-shadow-sm" : ""}>
+                  <span className={msg.isError || msg.isSuccess || msg.isCpuWin ? "text-shadow-sm" : ""}>
                     {msg.highlight ? (
                         <>
                             {msg.prefix}
-                            <span className="text-[#99FF99] tracking-wider">{msg.highlight}</span>
-                            {msg.suffix}
+                            <span className={`${msg.isCpuWin ? 'text-[#00FF00]' : 'text-[#99FF99]'} tracking-wider`}>{msg.highlight}</span>
+                            <span className={msg.isCpuWin ? 'text-[#00FF00]' : ''}>{msg.suffix}</span>
                         </>
                     ) : (
                         msg.text
                     )}
                   </span>
                   {msg.history && msg.history.length > 0 && (
-                    <div className="pl-4 mt-1 text-[#88CCFF] font-pixel text-[10px] leading-relaxed tracking-wide">
+                    <div className="pl-4 mt-1 text-[10px] leading-relaxed tracking-wide text-white">
                       {msg.history.map((h, i) => (
                         <div key={i}>- {h}</div>
                       ))}

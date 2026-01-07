@@ -1,28 +1,15 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 const MODEL_NAME = 'gemini-3-flash-preview';
 
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Helper to safely get the AI client only when needed
-const getClient = () => {
-  // Fixed: Directly using process.env.API_KEY in the initialization as required by guidelines
-  if (!process.env.API_KEY) return null;
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
-};
-
 // Validate if a player played for both teams and get history
 export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<{ isValid: boolean, history: string[] }> => {
   try {
-    const ai = getClient();
+    // Fixed: Create a new GoogleGenAI instance right before making an API call as per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // If no AI client available, we cannot validate via AI. 
-    if (!ai) {
-        console.warn("Gemini API Key missing. Skipping AI validation.");
-        return { isValid: false, history: [] };
-    }
-
     const isSameTeam = normalize(team1) === normalize(team2);
     let prompt = `Verify if football player "${playerName}" played for BOTH ${team1} and ${team2} in their senior career. 
     If they did, provide a list of strings indicating the team and the seasons or years they played there (e.g. "Sampdoria 2003-2005").`;
@@ -50,6 +37,7 @@ export const validateCrossover = async (team1: string, team2: string, playerName
       },
     });
     
+    // Fixed: Access response.text directly as a property
     const result = JSON.parse(response.text || '{"isValid": false, "history": []}');
     return { isValid: result.isValid, history: result.history || [] };
   } catch (error) {
@@ -107,13 +95,9 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
 
   // 2. Fallback to Gemini AI if Local DB yielded nothing
   try {
-    const ai = getClient();
+    // Fixed: Create a new GoogleGenAI instance right before making an API call as per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    if (!ai) {
-        console.warn("Gemini API Key missing. AI opponent has no answers.");
-        return [];
-    }
-
     const isSameTeam = normalize(team1) === normalize(team2);
     let prompt = `List up to 5 football players who played for both ${team1} and ${team2} in Serie A history. Return only surnames.`;
     
@@ -133,6 +117,7 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
       },
     });
 
+    // Fixed: Access response.text directly as a property
     const answers = JSON.parse(response.text || '[]');
     return answers;
   } catch (error) {
