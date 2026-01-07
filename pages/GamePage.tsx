@@ -170,6 +170,8 @@ const GamePage: React.FC = () => {
   const handleAIWin = async (answer: string) => {
     // Calculate stats before showing message
     let extraText = '';
+    let history: string[] | undefined = [];
+
     if (userTeam && opponentTeam) {
         try {
             const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
@@ -182,13 +184,23 @@ const GamePage: React.FC = () => {
             if (remaining > 0) {
                 extraText = ` (and ${remaining} more!)`;
             }
+
+            // Retrieve history for AI answer so seasons are shown
+            const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
+            if (verifyResult.isValid && verifyResult.history) {
+              history = verifyResult.history;
+            }
         } catch (e) {
             console.error(e);
         }
     }
 
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
-    setMessages(prev => [...prev, { text: `🤖 AI answered: ${answer} ✅${extraText}`, isError: true }]);
+    setMessages(prev => [...prev, { 
+      text: `🤖 AI answered: ${answer} ✅${extraText}`, 
+      isError: true, 
+      history: history 
+    }]);
     setGameState(GameState.ROUND_END);
   };
 
@@ -376,7 +388,7 @@ const GamePage: React.FC = () => {
                   </div>
                   {/* Display History if available */}
                   {msg.history && msg.history.length > 0 && (
-                    <div className="mt-2 pl-2 border-l-2 border-green-500/30 text-xs opacity-90 space-y-1">
+                    <div className="mt-2 pl-2 border-l-2 border-current text-xs opacity-90 space-y-1">
                       {msg.history.map((h, i) => (
                         <div key={i}>{h}</div>
                       ))}
