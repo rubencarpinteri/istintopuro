@@ -1,7 +1,6 @@
 import { validateCrossover as validateWithGemini } from './geminiService';
 
 // Helper to normalize team names for comparison
-// FIX: Automatically maps the known typo "sampdroria" to "sampdoria"
 const normalize = (str: string) => {
   const clean = str.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (clean.includes('sampdroria')) return 'sampdoria';
@@ -35,7 +34,12 @@ export const getMatchingPlayers = async (team1: string, team2: string): Promise<
     for (const [player, data] of Object.entries(LOCAL_PLAYER_DB)) {
       const teams = data.teams.map(t => normalize(t));
       
-      if (teams.some(t => t.includes(normalizedTeam1)) && teams.some(t => t.includes(normalizedTeam2))) {
+      // Check if team list contains both target teams
+      // using substring match to handle "Hellas Verona" matching "Verona"
+      const hasTeam1 = teams.some(t => t.includes(normalizedTeam1) || normalizedTeam1.includes(t));
+      const hasTeam2 = teams.some(t => t.includes(normalizedTeam2) || normalizedTeam2.includes(t));
+
+      if (hasTeam1 && hasTeam2) {
         matches.push(titleCase(player));
       }
     }
@@ -60,43 +64,44 @@ export const verifyAnswer = async (
     const module = await import('../data/localDb');
     const LOCAL_PLAYER_DB = module.LOCAL_PLAYER_DB;
 
-    // Search for ANY player in the DB that matches criteria
+    // Iterate through DB to find name match
     for (const [dbName, data] of Object.entries(LOCAL_PLAYER_DB)) {
       
-      // Check Name Match:
-      // 1. Exact match (e.g. "luca toni")
-      // 2. Surname match (e.g. "toni" matches "luca toni")
+      // Robust Name Matching:
+      // 1. Exact match
+      // 2. Surname match (dbName ends with input) -> "Luca Toni" ends with "toni"
+      // 3. Word match (input matches one of the names) -> "Ronaldo" matches "Cristiano Ronaldo"
       const nameParts = dbName.split(' ');
-      const surname = nameParts[nameParts.length - 1];
-      
-      const isNameMatch = dbName === inputClean || surname === inputClean;
+      const isSurnameMatch = nameParts[nameParts.length - 1] === inputClean;
+      const isExactMatch = dbName === inputClean;
+      const isWordMatch = nameParts.includes(inputClean);
 
-      if (isNameMatch) {
-        // Check Teams Match
+      if (isExactMatch || isSurnameMatch || isWordMatch) {
+        
+        // Verify Teams
         const teams = data.teams.map(t => normalize(t));
-        const playedForTeam1 = teams.some(t => t.includes(normalizedTeam1));
-        const playedForTeam2 = teams.some(t => t.includes(normalizedTeam2));
+        const playedForTeam1 = teams.some(t => t.includes(normalizedTeam1) || normalizedTeam1.includes(t));
+        const playedForTeam2 = teams.some(t => t.includes(normalizedTeam2) || normalizedTeam2.includes(t));
 
         if (playedForTeam1 && playedForTeam2) {
-           // Filter history for display
-           const relevantHistory = data.history.filter(h => 
-              normalize(h).includes(normalizedTeam1) || normalize(h).includes(normalizedTeam2)
-           );
+           // Filter history for display. 
+           // We try to match the specific seasons to the requested teams.
+           // If filtering is too strict and returns empty (e.g. mismatched spellings), we return full history.
+           const relevantHistory = data.history.filter(h => {
+              const hNorm = normalize(h);
+              return hNorm.includes(normalizedTeam1) || hNorm.includes(normalizedTeam2);
+           });
 
            return { 
              isValid: true, 
              source: 'LOCAL',
+             // Always prefer relevant history, but fall back to full history to ensure years are shown
              history: relevantHistory.length > 0 ? relevantHistory : data.history,
              correctedName: titleCase(dbName)
            };
         }
       }
     }
-    
-    // If we finished the loop and found a name match but they didn't play for both teams,
-    // we return false immediately (don't ask AI if we know the player exists but is wrong).
-    // However, to be safe, we just fall through if no *valid* crossover was found.
-
   } catch (error) {
     console.error("Error accessing local DB:", error);
   }

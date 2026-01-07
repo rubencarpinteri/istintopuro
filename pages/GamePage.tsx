@@ -202,28 +202,25 @@ const GamePage: React.FC = () => {
     // UI Feedback immediately
     setMessages(prev => [...prev, { text: `Checking ${rawInput}...` }]);
 
-    // 1. Optimistic check (if AI already found it)
-    // We check if input matches any AI answer (checking substrings for surnames)
+    // 1. Optimistic check: Did AI already find this player?
+    // Even if AI found it, we WANT to fetch the history from DB to show the years.
     const isKnownValid = aiPotentialAnswers.current.some(a => 
         a.toLowerCase().includes(rawInput.toLowerCase()) || 
         rawInput.toLowerCase().includes(a.toLowerCase())
     );
     
-    if (isKnownValid) {
-       // We assume if AI found it, it's correct. We just format it nicely.
-       // Try to find the full name from the AI list
-       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(rawInput.toLowerCase())) || rawInput;
-       handleSuccess(matchName, 'AI Match', []);
-       return;
-    }
-
     // 2. Full Verification (Local DB -> then AI)
+    // We run verification regardless of isKnownValid to ensure we get the history data from DB
     const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
 
     if (result.isValid) {
       // Use the corrected name from DB (e.g. "Luca Toni" if user typed "Toni")
       const displayName = result.correctedName || rawInput;
       handleSuccess(displayName, result.source || 'Verified', result.history);
+    } else if (isKnownValid) {
+       // Fallback: If verification failed (weird typo?) but AI knew it, accept it without history
+       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(rawInput.toLowerCase())) || rawInput;
+       handleSuccess(matchName, 'AI Match', []);
     } else {
       setMessages(prev => [...prev, { text: `❌ ${rawInput} is incorrect`, isError: true }]);
     }
