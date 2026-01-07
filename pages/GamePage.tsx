@@ -387,8 +387,8 @@ const GamePage: React.FC = () => {
            >
               {messages.length === 0 && (
                   <div className="text-green-700">
-                      > WAITING FOR INPUT...<br/>
-                      > {possibleAnswersCount === 0 ? "DATABASE CHECKING..." : "ENTER PLAYER SURNAME"}
+                      {'>'} WAITING FOR INPUT...<br/>
+                      {'>'} {possibleAnswersCount === 0 ? "DATABASE CHECKING..." : "ENTER PLAYER SURNAME"}
                   </div>
               )}
               {messages.map((msg, idx) => (
