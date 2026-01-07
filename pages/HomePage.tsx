@@ -16,7 +16,7 @@ const HomePage: React.FC = () => {
             <span className="text-white text-lg">CALCIO</span>
             </h1>
         </div>
-        <p className="text-green-400 font-mono text-xl blink">INSERT COIN TO START</p>
+        <p className="text-green-400 font-pixel text-[10px] tracking-widest blink uppercase">INSERT COIN TO START</p>
       </header>
 
       {/* Main Actions */}

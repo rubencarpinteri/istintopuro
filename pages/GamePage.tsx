@@ -17,6 +17,17 @@ const generateColor = (str: string) => {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 };
 
+interface GameMessage {
+  text?: string;        // For simple messages
+  prefix?: string;      // Text before the name
+  highlight?: string;   // The player name (to be colored)
+  suffix?: string;      // Text after the name
+  isError?: boolean;
+  isSuccess?: boolean;
+  source?: string;
+  history?: string[];
+}
+
 const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const [gameState, setGameState] = useState<GameState>(GameState.SELECTION);
@@ -30,14 +41,8 @@ const GamePage: React.FC = () => {
   const [teamFilter, setTeamFilter] = useState('');
   const [isDbLoaded, setIsDbLoaded] = useState(false);
 
-  // Update message state to include optional history array
-  const [messages, setMessages] = useState<{
-    text: string, 
-    isError?: boolean, 
-    isSuccess?: boolean, 
-    source?: string,
-    history?: string[] 
-  }[]>([]);
+  // Update message state to include structured text for highlighting
+  const [messages, setMessages] = useState<GameMessage[]>([]);
   
   const [scores, setScores] = useState({ user: 0, opponent: 0 });
   const [possibleAnswersCount, setPossibleAnswersCount] = useState<number | null>(null);
@@ -223,8 +228,10 @@ const GamePage: React.FC = () => {
 
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     setMessages(prev => [...prev, { 
-      text: `> CPU scores with ${answer.toUpperCase()}${extraText}`, 
-      isError: true, // Will use specific high-contrast red in rendering
+      prefix: "> CPU scores with ",
+      highlight: answer.toUpperCase(),
+      suffix: extraText,
+      isError: true, // Will use specific red in rendering
       history: history 
     }]);
     setGameState(GameState.ROUND_END);
@@ -274,7 +281,9 @@ const GamePage: React.FC = () => {
 
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
     setMessages(prev => [...prev, { 
-      text: `> GOAL! ${answer.toUpperCase()} is correct!${extraText}`, 
+      prefix: "> GOAL! ",
+      highlight: answer.toUpperCase(),
+      suffix: ` is correct!${extraText}`,
       isSuccess: true,
       source,
       history
@@ -311,8 +320,8 @@ const GamePage: React.FC = () => {
           <p className="text-4xl font-pixel text-white">{scores.user}</p>
         </div>
         <div className="text-center w-1/3 flex flex-col items-center justify-center">
-            <span className="font-pixel text-[10px] text-red-500 blink">
-                {gameState === GameState.SELECTION ? 'SELECT' : 'MATCH'}
+            <span className="font-pixel text-[10px] text-red-500 blink uppercase tracking-tighter">
+                {gameState === GameState.SELECTION ? 'CHOOSE' : 'MATCH'}
             </span>
             <div className="w-full h-1 bg-gray-700 mt-1"></div>
         </div>
@@ -326,26 +335,26 @@ const GamePage: React.FC = () => {
       {gameState === GameState.SELECTION && (
         <div className="flex-1 flex flex-col h-full overflow-hidden retro-box p-4 bg-gray-900">
           <div className="text-center mb-4 shrink-0">
-            <h2 className="text-lg font-pixel text-yellow-400 mb-2">SELECT CLUB</h2>
-            <div className="font-pixel text-red-500 text-sm mb-2 blink">
-              TIME: {timeLeft}
+            <h2 className="text-sm font-pixel text-yellow-400 mb-2 tracking-widest">DOUBLE-TAP CLUB</h2>
+            <div className="font-pixel text-red-500 text-[10px] mb-3">
+              TIME REMAINING: {timeLeft}
             </div>
             
             <input 
                 type="text"
-                placeholder="FILTER TEAMS..."
+                placeholder="FILTER CLUBS..."
                 value={teamFilter}
                 onChange={(e) => setTeamFilter(e.target.value)}
-                className="w-full bg-black border-2 border-green-700 text-green-500 px-2 py-2 font-pixel text-xs uppercase focus:outline-none focus:border-green-400"
+                className="w-full bg-black border-2 border-green-800 text-green-500 px-3 py-2 font-pixel text-[10px] uppercase focus:outline-none focus:border-green-400 transition-colors"
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto min-h-0 mb-4 pr-1">
+          <div className="flex-1 overflow-y-auto min-h-0 mb-4 pr-1 scrollbar-thin">
              {!isDbLoaded && (
-                 <div className="text-center py-8 text-gray-500 font-pixel text-xs">LOADING DATABASE...</div>
+                 <div className="text-center py-8 text-gray-500 font-pixel text-[10px]">ACCESSING DATABASE...</div>
              )}
              
-             <div className="grid grid-cols-3 gap-2">
+             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
                 {filteredTeams.map(team => (
                 <TeamCard 
                     key={team.id}
@@ -357,13 +366,13 @@ const GamePage: React.FC = () => {
                 ))}
             </div>
             {filteredTeams.length === 0 && isDbLoaded && (
-                <div className="text-center py-8 text-gray-500 text-xs">NO TEAMS FOUND</div>
+                <div className="text-center py-8 text-gray-500 font-pixel text-[10px]">NO MATCHES FOUND</div>
             )}
           </div>
 
-          <div className="shrink-0 pt-2">
+          <div className="shrink-0 pt-2 border-t-2 border-gray-800">
             <Button fullWidth onClick={startReveal} disabled={!userTeam}>
-                CONFIRM
+                CONFIRM SELECTION
             </Button>
           </div>
         </div>
@@ -399,9 +408,9 @@ const GamePage: React.FC = () => {
       {(gameState === GameState.PLAYING || gameState === GameState.ROUND_END) && (
         <div className="flex-1 flex flex-col min-h-0 retro-box bg-gray-900 p-2">
            {/* Header Info - Using Actual Team Colors */}
-           <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-xs font-pixel">
+           <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-[10px] font-pixel">
               <span style={{ color: userTeam?.colors[0] }}>{userTeam?.name}</span>
-              <span className="text-gray-500">&</span>
+              <span className="text-gray-500">VS</span>
               <span style={{ color: opponentTeam?.colors[0] }}>{opponentTeam?.name}</span>
            </div>
 
@@ -419,9 +428,19 @@ const GamePage: React.FC = () => {
               )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`
-                    ${msg.isSuccess ? 'text-[#00FF00]' : msg.isError ? 'text-[#FF4444]' : 'text-[#FFFF00]'}
+                    ${msg.isSuccess ? 'text-[#00FF00]' : msg.isError ? 'text-[#FF5555]' : 'text-[#FFFF00]'}
                 `}>
-                  <span className={msg.isError || msg.isSuccess ? "font-bold text-shadow-sm" : ""}>{msg.text}</span>
+                  <span className={msg.isError || msg.isSuccess ? "font-bold text-shadow-sm" : ""}>
+                    {msg.highlight ? (
+                        <>
+                            {msg.prefix}
+                            <span className="text-[#99FF99] tracking-wider">{msg.highlight}</span>
+                            {msg.suffix}
+                        </>
+                    ) : (
+                        msg.text
+                    )}
+                  </span>
                   {msg.history && msg.history.length > 0 && (
                     <div className="pl-4 mt-1 text-[#88CCFF] font-pixel text-[10px] leading-relaxed tracking-wide">
                       {msg.history.map((h, i) => (

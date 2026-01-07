@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
 const MODEL_NAME = 'gemini-3-flash-preview';
@@ -6,10 +7,9 @@ const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Helper to safely get the AI client only when needed
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
-  // If no key is provided, return null instead of crashing
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+  // Fixed: Directly using process.env.API_KEY in the initialization as required by guidelines
+  if (!process.env.API_KEY) return null;
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // Validate if a player played for both teams and get history
