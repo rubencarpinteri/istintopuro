@@ -64,6 +64,10 @@ const GamePage: React.FC = () => {
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Refs for race condition handling
+  const isUserValidating = useRef(false);
+  const aiPendingWin = useRef<string | null>(null);
 
   // Load DB and extract all teams
   useEffect(() => {
@@ -132,6 +136,8 @@ const GamePage: React.FC = () => {
     // Input box should always be empty when it's time to guess
     if (gameState === GameState.PLAYING) {
         setInputValue(''); // Clear input whenever we enter PLAYING state
+        isUserValidating.current = false;
+        aiPendingWin.current = null;
     }
 
     if (gameState === GameState.PLAYING && userTeam && opponentTeam) {
@@ -203,24 +209,23 @@ const GamePage: React.FC = () => {
       // AI "thinks" between 10 and 35 seconds
       const thinkTime = Math.random() * 25000 + 10000;
       gameLoopRef.current = setTimeout(() => {
-        // AI picks one answer
-        handleAIWin(answers[0]);
+        // If user is validating, prioritize user and defer AI win
+        if (isUserValidating.current) {
+            aiPendingWin.current = answers[0];
+        } else {
+            handleAIWin(answers[0]);
+        }
       }, thinkTime);
     }
   };
 
   const getExtraText = async (answer: string, team1: string, team2: string) => {
     const allMatches = await getMatchingPlayers(team1, team2);
-    const ansNorm = normalizeStr(answer);
-    const matchesNorm = allMatches.map(m => normalizeStr(m));
-    const isInDb = matchesNorm.includes(ansNorm);
-    const count = allMatches.length;
-    // If the answer is in the DB, we subtract it from the total.
-    // If it's NOT in the DB (AI find), the remaining count is the full DB count.
-    const remaining = isInDb ? count - 1 : count;
-
-    if (remaining === 0) return " ... and that's the only one we know!";
-    return ` ... plus ${remaining} others in database!`;
+    // Use total count to avoid confusion
+    const total = allMatches.length;
+    
+    if (total <= 1) return "! (Only one!)";
+    return `! (${total} possible!)`;
   };
 
   const handleAIWin = async (answer: string) => {
@@ -258,6 +263,9 @@ const GamePage: React.FC = () => {
     e.preventDefault();
     if (!inputValue.trim() || !userTeam || !opponentTeam) return;
 
+    // 1. Race Condition Protection: Mark user as validating
+    isUserValidating.current = true;
+
     const rawInput = inputValue.trim();
     setInputValue('');
     const inputClean = rawInput.toLowerCase();
@@ -265,14 +273,17 @@ const GamePage: React.FC = () => {
     // UI Feedback immediately
     setMessages(prev => [...prev, { text: `> Analyzing: ${rawInput}...` }]);
 
-    // 1. Optimistic check: Did AI already find this player?
+    // 2. Optimistic check: Did AI already find this player?
     const isKnownValid = aiPotentialAnswers.current.some(a => 
         a.toLowerCase().includes(inputClean) || 
         inputClean.includes(a.toLowerCase())
     );
     
-    // 2. Full Verification
+    // 3. Full Verification
     const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
+
+    // 4. Release lock
+    isUserValidating.current = false;
 
     if (result.isValid) {
       const displayName = result.correctedName || rawInput;
@@ -282,6 +293,12 @@ const GamePage: React.FC = () => {
        handleSuccess(matchName, 'AI', []);
     } else {
       setMessages(prev => [...prev, { text: `> REJECTED: ${rawInput} is not valid.`, isError: true }]);
+      
+      // If AI was waiting to win while we verified, now let it win since user failed
+      if (aiPendingWin.current) {
+          handleAIWin(aiPendingWin.current);
+          aiPendingWin.current = null;
+      }
     }
   };
 
@@ -299,11 +316,12 @@ const GamePage: React.FC = () => {
     setMessages(prev => [...prev, { 
       prefix: "> GOAL! ",
       highlight: answer.toUpperCase(),
-      suffix: ` is correct!${extraText}`,
+      suffix: extraText,
       isSuccess: true,
       source,
       history: sortedHistory
     }]);
+    
     if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
     setGameState(GameState.ROUND_END);
   };
@@ -407,7 +425,6 @@ const GamePage: React.FC = () => {
                     {userTeam?.name}
                 </p>
              </div>
-             {/* Center element removed as per request to have ONLY & in title */}
              <div className="text-center w-5/12">
                 <div className="w-20 h-20 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center">
                     <div className="w-16 h-16" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
@@ -426,7 +443,7 @@ const GamePage: React.FC = () => {
            {/* Header Info - Using Actual Team Colors */}
            <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-[10px] font-pixel">
               <span style={{ color: userTeam?.colors[0] }}>{userTeam?.name}</span>
-              <span></span> {/* Empty span to maintain flex spacing without VS text */}
+              <span></span> 
               <span style={{ color: opponentTeam?.colors[0] }}>{opponentTeam?.name}</span>
            </div>
 
