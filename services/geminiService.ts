@@ -12,22 +12,24 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Validate if a player played for both teams
-export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<boolean> => {
+// Validate if a player played for both teams and get history
+export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<{ isValid: boolean, history: string[] }> => {
   try {
     const ai = getClient();
     
     // If no AI client available, we cannot validate via AI. 
     if (!ai) {
         console.warn("Gemini API Key missing. Skipping AI validation.");
-        return false;
+        return { isValid: false, history: [] };
     }
 
     const isSameTeam = normalize(team1) === normalize(team2);
-    let prompt = `True or False: Did football player "${playerName}" play for BOTH ${team1} and ${team2} in their senior career (Serie A context preferred)?`;
+    let prompt = `Verify if football player "${playerName}" played for BOTH ${team1} and ${team2} in their senior career. 
+    If they did, provide a list of strings indicating the team and the seasons or years they played there (e.g. "Sampdoria 2003-2005").`;
     
     if (isSameTeam) {
-        prompt = `True or False: Did football player "${playerName}" play ONLY for ${team1} (and no other Italian team) in their senior Serie A career?`;
+        prompt = `Verify if football player "${playerName}" is a "One Club Man" for ${team1} in Serie A (played ONLY for ${team1} and no other major Italian club). 
+        If true, provide their career years with the club.`;
     }
 
     const response = await ai.models.generateContent({
@@ -39,16 +41,20 @@ export const validateCrossover = async (team1: string, team2: string, playerName
           type: Type.OBJECT,
           properties: {
             isValid: { type: Type.BOOLEAN },
+            history: { 
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
           },
         },
       },
     });
     
-    const result = JSON.parse(response.text || '{"isValid": false}');
-    return result.isValid;
+    const result = JSON.parse(response.text || '{"isValid": false, "history": []}');
+    return { isValid: result.isValid, history: result.history || [] };
   } catch (error) {
     console.error("Gemini validation error:", error);
-    return false;
+    return { isValid: false, history: [] };
   }
 };
 

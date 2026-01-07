@@ -7,7 +7,7 @@ import { GameState, Team } from '../types';
 import { getAIAnswers } from '../services/geminiService';
 import { verifyAnswer, getMatchingPlayers } from '../services/verificationService';
 
-// Color generator for teams not in constants
+// Color generator for teams not in constants (fallback)
 const generateColor = (str: string) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -69,7 +69,7 @@ const GamePage: React.FC = () => {
 
         // 2. Convert to Team objects, preserving existing colors if possible
         const allDbTeams: Team[] = Array.from(uniqueTeamNames).map(name => {
-            // Check if we have a preset configuration for this team
+            // Check if we have a preset configuration for this team in updated constants
             const preset = TEAMS.find(t => t.name.toLowerCase() === name.toLowerCase());
             if (preset) return preset;
 
@@ -133,6 +133,15 @@ const GamePage: React.FC = () => {
     }
   }, [messages]);
 
+  const handleTeamClick = (team: Team) => {
+    if (userTeam?.id === team.id) {
+        // Double click/press confirms
+        startReveal();
+    } else {
+        setUserTeam(team);
+    }
+  };
+
   const handleAutoSelect = () => {
     if (!userTeam && availableTeams.length > 0) {
       const random = availableTeams[Math.floor(Math.random() * availableTeams.length)];
@@ -142,6 +151,7 @@ const GamePage: React.FC = () => {
   };
 
   const startReveal = () => {
+    if (!userTeam) return;
     setGameState(GameState.REVEAL);
     let count = 3;
     const revealInterval = setInterval(() => {
@@ -190,14 +200,15 @@ const GamePage: React.FC = () => {
     if (userTeam && opponentTeam) {
         try {
             const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
-            const total = allMatches.length;
             
             // Check if the AI's answer is in the list
-            const isAnswerInDb = allMatches.some(p => p.toLowerCase() === answer.toLowerCase());
-            const remaining = isAnswerInDb ? total - 1 : total;
+            // We subtract 1 because the current answer is revealed
+            const remaining = allMatches.length - 1; 
             
             if (remaining > 0) {
-                extraText = ` (+${remaining} others)`;
+                extraText = ` (...and ${remaining} more!)`;
+            } else {
+                extraText = ` ... and that's the only one!`;
             }
 
             // Retrieve history for AI answer so seasons are shown
@@ -212,8 +223,8 @@ const GamePage: React.FC = () => {
 
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     setMessages(prev => [...prev, { 
-      text: `> CPU scores with ${answer.toUpperCase()} ${extraText}`, 
-      isError: true, 
+      text: `> CPU scores with ${answer.toUpperCase()}${extraText}`, 
+      isError: true, // Will use specific high-contrast red in rendering
       history: history 
     }]);
     setGameState(GameState.ROUND_END);
@@ -249,10 +260,21 @@ const GamePage: React.FC = () => {
     }
   };
 
-  const handleSuccess = (answer: string, source: string, history?: string[]) => {
+  const handleSuccess = async (answer: string, source: string, history?: string[]) => {
+    let extraText = '';
+    if (userTeam && opponentTeam) {
+        const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
+        const remaining = allMatches.length - 1; 
+        if (remaining > 0) {
+            extraText = ` (...and ${remaining} more!)`;
+        } else {
+            extraText = ` ... and that's the only one!`;
+        }
+    }
+
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
     setMessages(prev => [...prev, { 
-      text: `> GOAL! ${answer.toUpperCase()} is correct!`, 
+      text: `> GOAL! ${answer.toUpperCase()} is correct!${extraText}`, 
       isSuccess: true,
       source,
       history
@@ -329,7 +351,7 @@ const GamePage: React.FC = () => {
                     key={team.id}
                     team={team}
                     selected={userTeam?.id === team.id}
-                    onClick={() => setUserTeam(team)}
+                    onClick={() => handleTeamClick(team)}
                     compact={true}
                 />
                 ))}
@@ -356,14 +378,18 @@ const GamePage: React.FC = () => {
                 <div className="w-20 h-20 mb-4 border-4 border-blue-500 mx-auto bg-gray-800 flex items-center justify-center">
                     <div className="w-16 h-16" style={{ background: userTeam?.colors[0] }}></div>
                 </div>
-                <p className="font-pixel text-xs text-blue-400">{userTeam?.name}</p>
+                <p className="font-pixel text-xs" style={{ color: userTeam?.colors[0] || 'white' }}>
+                    {userTeam?.name}
+                </p>
              </div>
-             <div className="text-2xl font-pixel text-white">VS</div>
+             <div className="text-2xl font-pixel text-white">&</div>
              <div className="text-center w-5/12">
                 <div className="w-20 h-20 mb-4 border-4 border-red-500 mx-auto bg-gray-800 flex items-center justify-center">
                     <div className="w-16 h-16" style={{ background: opponentTeam?.colors[0] }}></div>
                 </div>
-                <p className="font-pixel text-xs text-red-400">{opponentTeam?.name}</p>
+                <p className="font-pixel text-xs" style={{ color: opponentTeam?.colors[0] || 'white' }}>
+                    {opponentTeam?.name}
+                </p>
              </div>
           </div>
         </div>
@@ -372,17 +398,17 @@ const GamePage: React.FC = () => {
       {/* PHASE: PLAYING */}
       {(gameState === GameState.PLAYING || gameState === GameState.ROUND_END) && (
         <div className="flex-1 flex flex-col min-h-0 retro-box bg-gray-900 p-2">
-           {/* Header Info */}
+           {/* Header Info - Using Actual Team Colors */}
            <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-xs font-pixel">
-              <span className="text-blue-400">{userTeam?.name}</span>
-              <span className="text-gray-500">X-OVER</span>
-              <span className="text-red-400">{opponentTeam?.name}</span>
+              <span style={{ color: userTeam?.colors[0] }}>{userTeam?.name}</span>
+              <span className="text-gray-500">&</span>
+              <span style={{ color: opponentTeam?.colors[0] }}>{opponentTeam?.name}</span>
            </div>
 
            {/* Commentary Log (Terminal Style) */}
            <div 
              ref={scrollRef}
-             className="flex-1 overflow-y-auto mb-2 space-y-1 p-2 bg-black border-2 border-gray-700 font-mono text-sm leading-tight shadow-inner"
+             className="flex-1 overflow-y-auto mb-2 space-y-2 p-2 bg-black border-2 border-gray-700 font-mono text-sm leading-tight shadow-inner"
              style={{ fontFamily: "'VT323', monospace", fontSize: "1.2rem" }}
            >
               {messages.length === 0 && (
@@ -393,11 +419,11 @@ const GamePage: React.FC = () => {
               )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`
-                    ${msg.isSuccess ? 'text-green-400' : msg.isError ? 'text-red-500' : 'text-yellow-200'}
+                    ${msg.isSuccess ? 'text-[#00FF00]' : msg.isError ? 'text-[#FF4444]' : 'text-[#FFFF00]'}
                 `}>
-                  {msg.text}
+                  <span className={msg.isError || msg.isSuccess ? "font-bold text-shadow-sm" : ""}>{msg.text}</span>
                   {msg.history && msg.history.length > 0 && (
-                    <div className="pl-4 text-gray-500 text-xs">
+                    <div className="pl-4 mt-1 text-[#88CCFF] font-pixel text-[10px] leading-relaxed tracking-wide">
                       {msg.history.map((h, i) => (
                         <div key={i}>- {h}</div>
                       ))}

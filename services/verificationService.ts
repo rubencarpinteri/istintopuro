@@ -139,15 +139,16 @@ export const verifyAnswer = async (
   // Only ask AI if the input looks like a valid name (length > 2)
   if (inputClean.length > 2) {
       console.log(`[Verification] Checking AI for ${userInput}...`);
-      // Pass special context if same team
-      if (isSameTeam) {
-        // We can't really trust Gemini efficiently for "One Club Man" check without specific prompting, 
-        // but for now we fallback to standard check which might be lenient. 
-        // Ideally we should avoid AI fallback for Same Team mode if we want strict local DB adherence.
-        // Let's stick to standard behavior but users should know the rules rely on DB.
-      }
+      
       const aiResult = await validateWithGemini(team1, team2, userInput);
-      return { isValid: aiResult, source: 'AI' };
+      if (aiResult.isValid) {
+        return { 
+            isValid: true, 
+            source: 'AI',
+            history: aiResult.history || [],
+            correctedName: userInput.toUpperCase() // Basic formatting for AI results
+        };
+      }
   }
 
   return { isValid: false, source: 'LOCAL' };
