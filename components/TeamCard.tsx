@@ -16,21 +16,32 @@ export const TeamCard: React.FC<TeamCardProps> = ({ team, selected, onClick, dis
       onClick={onClick}
       disabled={disabled}
       className={`
-        relative overflow-hidden rounded-xl flex items-center justify-center transition-all duration-300
-        ${compact ? 'p-2 h-14' : 'p-4 h-24'}
-        ${selected ? 'ring-4 ring-white scale-105 z-10 shadow-xl' : 'hover:scale-105 opacity-80 hover:opacity-100'}
-        ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+        relative flex flex-col items-center justify-center transition-none border-2
+        ${compact ? 'p-1 h-16' : 'p-2 h-32'}
+        ${selected 
+            ? 'bg-yellow-400 border-white text-black shadow-[2px_2px_0px_0px_#fff]' 
+            : 'bg-gray-800 border-gray-500 text-gray-300 hover:bg-gray-700 hover:border-gray-300 hover:text-white'
+        }
+        ${disabled ? 'cursor-not-allowed opacity-50 grayscale' : 'cursor-pointer'}
         ${className}
       `}
-      style={{
-        background: `linear-gradient(135deg, ${team.colors[0]} 0%, ${team.colors[1]} 100%)`
-      }}
     >
-      <span className={`relative z-10 text-white font-bold drop-shadow-md uppercase tracking-wider ${compact ? 'text-xs' : 'text-lg'}`}>
-        {team.name}
-      </span>
-      {/* Glossy effect */}
-      <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
+      {/* Team Color Strip */}
+      <div 
+        className="w-full h-2 mb-2 border border-black" 
+        style={{
+            background: `linear-gradient(90deg, ${team.colors[0]} 50%, ${team.colors[1]} 50%)`
+        }} 
+      />
+
+      <div className="flex flex-col items-center text-center w-full">
+        <span className={`
+            font-pixel leading-tight uppercase
+            ${compact ? 'text-[8px]' : 'text-[10px]'}
+        `}>
+            {team.name}
+        </span>
+      </div>
     </button>
   );
 };

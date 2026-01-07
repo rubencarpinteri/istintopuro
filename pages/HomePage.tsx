@@ -7,69 +7,53 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="max-w-md mx-auto min-h-screen p-6 flex flex-col relative z-10">
-      {/* Header */}
-      <header className="py-8 text-center space-y-2">
-        <div className="inline-block p-3 rounded-full bg-[#0066CC]/10 mb-4 border border-[#0066CC]/20">
-          <span className="text-3xl">⚽</span>
+    <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col justify-center relative z-10">
+      
+      {/* Retro Header */}
+      <header className="mb-12 text-center">
+        <div className="retro-box p-6 bg-blue-900 mb-6">
+            <h1 className="text-4xl font-pixel text-yellow-400 leading-normal text-shadow-black">
+            CALCIO<br/>
+            <span className="text-white text-2xl">MANAGER 98</span>
+            </h1>
         </div>
-        <h1 className="text-4xl font-extrabold tracking-tight">
-          CALCIO <span className="text-[#0066CC]">MINIGAME</span>
-        </h1>
-        <p className="text-gray-400 font-mono text-sm">SERIE A CROSSOVER CHALLENGE</p>
+        <p className="text-green-400 font-mono text-xl blink">INSERT COIN TO START</p>
       </header>
 
       {/* Main Actions */}
-      <main className="flex-1 flex flex-col gap-4 justify-center py-8">
-        <div className="bg-[#1E2732] rounded-2xl p-6 border border-gray-800 shadow-xl">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <span className="w-2 h-8 bg-[#0066CC] rounded-full"></span>
-            Play Now
-          </h2>
-          <div className="space-y-3">
-            <Button fullWidth onClick={() => navigate('/game?mode=ai')}>
-              🤖 VS AI (Gemini)
+      <main className="flex-1 flex flex-col gap-6">
+        <div className="space-y-4 px-4">
+            <Button fullWidth onClick={() => navigate('/game?mode=ai')} className="text-sm">
+              1P VS CPU (GEMINI)
             </Button>
             <Button fullWidth variant="secondary" disabled title="Coming soon">
-              👥 VS Friend (Offline)
+              2P VS PLAYER
             </Button>
-            <Button fullWidth variant="secondary" disabled title="Coming soon">
-              🎲 Random Opponent
-            </Button>
-          </div>
         </div>
 
-        {/* History Preview */}
-        <div className="bg-[#1E2732] rounded-2xl p-6 border border-gray-800">
-          <h2 className="text-lg font-bold mb-4 text-gray-300">Recent Matches</h2>
-          <div className="space-y-3">
+        {/* History Preview (Arcade High Scores style) */}
+        <div className="mt-8 border-t-2 border-dashed border-gray-600 pt-4">
+          <h2 className="text-center font-pixel text-xs text-gray-400 mb-4">LAST MATCHES</h2>
+          <div className="space-y-2 text-sm font-mono">
             {MOCK_HISTORY.map((match) => (
-              <div key={match.id} className="flex items-center justify-between p-3 rounded-lg bg-[#0F1419] border border-gray-800">
-                <div className="flex flex-col">
-                  <span className="font-bold text-sm">{match.opponent}</span>
-                  <span className="text-xs text-gray-500">{match.date}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-sm font-mono font-bold ${match.result === 'WIN' ? 'text-green-500' : 'text-red-500'}`}>
-                    {match.result}
-                  </span>
-                  <span className="bg-[#1E2732] px-2 py-1 rounded text-xs font-mono">
-                    {match.score}
-                  </span>
-                </div>
+              <div key={match.id} className="flex items-center justify-between p-2 bg-black border border-gray-700 text-green-500">
+                <span>{match.opponent.substring(0, 10)}</span>
+                <span className={match.result === 'WIN' ? 'text-yellow-400' : 'text-red-500'}>
+                    {match.score} {match.result.substring(0,1)}
+                </span>
               </div>
             ))}
           </div>
         </div>
       </main>
 
-      <footer className="text-center text-xs text-gray-600 py-4 flex flex-col gap-2">
-        <span>v2.5.0 • Powered by Gemini AI</span>
+      <footer className="text-center text-xs text-gray-600 py-6 font-pixel">
+        <p>© 1998-2025 GEMINI SPORTS</p>
         <button 
           onClick={() => navigate('/convert')} 
-          className="text-gray-700 hover:text-gray-500 underline decoration-dotted transition-colors"
+          className="mt-2 hover:text-white underline decoration-dashed"
         >
-          Manage Data / Upload CSVs
+          [DB EDITOR]
         </button>
       </footer>
     </div>

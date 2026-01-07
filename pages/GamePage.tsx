@@ -46,6 +46,7 @@ const GamePage: React.FC = () => {
   const aiPotentialAnswers = useRef<string[]>([]);
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load DB and extract all teams
   useEffect(() => {
@@ -76,7 +77,7 @@ const GamePage: React.FC = () => {
             return {
                 id: name.toLowerCase().replace(/[^a-z0-9]/g, ''),
                 name: name,
-                colors: [generateColor(name), '#000000'] // Generated + Black
+                colors: [generateColor(name), '#333333'] 
             };
         });
 
@@ -109,8 +110,13 @@ const GamePage: React.FC = () => {
     }
   }, [gameState, availableTeams]);
 
-  // Game Start Effect
+  // Game Start Effect & INPUT CLEARING LOGIC
   useEffect(() => {
+    // Input box should always be empty when it's time to guess
+    if (gameState === GameState.PLAYING) {
+        setInputValue(''); // Clear input whenever we enter PLAYING state
+    }
+
     if (gameState === GameState.PLAYING && userTeam && opponentTeam) {
       setTimeout(() => inputRef.current?.focus(), 100);
       checkPossibilitiesAndStart(userTeam.name, opponentTeam.name);
@@ -119,6 +125,13 @@ const GamePage: React.FC = () => {
       if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
     };
   }, [gameState]);
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   const handleAutoSelect = () => {
     if (!userTeam && availableTeams.length > 0) {
@@ -147,7 +160,7 @@ const GamePage: React.FC = () => {
 
     if (allMatches.length === 0) {
         setMessages([{ 
-            text: `⚠️ Impossible Matchup! No players found who played for ${team1 === team2 ? 'ONLY ' + team1 : 'both ' + team1 + ' and ' + team2} in our database.`, 
+            text: `*** MATCH ABANDONED ***\nNo players found for ${team1} + ${team2}.`, 
             isError: true 
         }]);
         // Allow proceeding to next round without points
@@ -184,7 +197,7 @@ const GamePage: React.FC = () => {
             const remaining = isAnswerInDb ? total - 1 : total;
             
             if (remaining > 0) {
-                extraText = ` (and ${remaining} more!)`;
+                extraText = ` (+${remaining} others)`;
             }
 
             // Retrieve history for AI answer so seasons are shown
@@ -199,7 +212,7 @@ const GamePage: React.FC = () => {
 
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     setMessages(prev => [...prev, { 
-      text: `🤖 AI answered: ${answer} ✅${extraText}`, 
+      text: `> CPU scores with ${answer.toUpperCase()} ${extraText}`, 
       isError: true, 
       history: history 
     }]);
@@ -214,36 +227,32 @@ const GamePage: React.FC = () => {
     setInputValue('');
     
     // UI Feedback immediately
-    setMessages(prev => [...prev, { text: `Checking ${rawInput}...` }]);
+    setMessages(prev => [...prev, { text: `> Analyzing: ${rawInput}...` }]);
 
     // 1. Optimistic check: Did AI already find this player?
-    // Even if AI found it, we WANT to fetch the history from DB to show the years.
     const isKnownValid = aiPotentialAnswers.current.some(a => 
         a.toLowerCase().includes(rawInput.toLowerCase()) || 
         rawInput.toLowerCase().includes(a.toLowerCase())
     );
     
-    // 2. Full Verification (Local DB -> then AI)
-    // We run verification regardless of isKnownValid to ensure we get the history data from DB
+    // 2. Full Verification
     const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
 
     if (result.isValid) {
-      // Use the corrected name from DB (e.g. "Luca Toni" if user typed "Toni")
       const displayName = result.correctedName || rawInput;
-      handleSuccess(displayName, result.source || 'Verified', result.history);
+      handleSuccess(displayName, result.source || 'DB', result.history);
     } else if (isKnownValid) {
-       // Fallback: If verification failed (weird typo?) but AI knew it, accept it without history
        const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(rawInput.toLowerCase())) || rawInput;
-       handleSuccess(matchName, 'AI Match', []);
+       handleSuccess(matchName, 'AI', []);
     } else {
-      setMessages(prev => [...prev, { text: `❌ ${rawInput} is incorrect`, isError: true }]);
+      setMessages(prev => [...prev, { text: `> REJECTED: ${rawInput} is not valid.`, isError: true }]);
     }
   };
 
   const handleSuccess = (answer: string, source: string, history?: string[]) => {
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
     setMessages(prev => [...prev, { 
-      text: `GOAL! ${answer} is correct!`, 
+      text: `> GOAL! ${answer.toUpperCase()} is correct!`, 
       isSuccess: true,
       source,
       history
@@ -271,43 +280,47 @@ const GamePage: React.FC = () => {
   }, [availableTeams, teamFilter]);
 
   return (
-    <div className="min-h-screen flex flex-col max-w-lg mx-auto p-4 relative z-10">
-      {/* Scoreboard */}
-      <div className="flex items-center justify-between mb-6 bg-[#1E2732] p-4 rounded-2xl border border-gray-800 shadow-lg">
+    <div className="min-h-screen flex flex-col max-w-lg mx-auto p-4 relative z-10 font-mono text-white">
+      
+      {/* 16-BIT SCOREBOARD */}
+      <div className="flex items-center justify-between mb-4 bg-black border-4 border-gray-500 p-2 shadow-lg">
         <div className="text-center w-1/3">
-          <p className="text-xs text-gray-400 uppercase font-bold">You</p>
-          <p className="text-3xl font-mono font-bold text-[#0066CC]">{scores.user}</p>
+          <p className="font-pixel text-[10px] text-blue-400">PLAYER 1</p>
+          <p className="text-4xl font-pixel text-white">{scores.user}</p>
         </div>
-        <div className="w-px h-10 bg-gray-700"></div>
+        <div className="text-center w-1/3 flex flex-col items-center justify-center">
+            <span className="font-pixel text-[10px] text-red-500 blink">
+                {gameState === GameState.SELECTION ? 'SELECT' : 'MATCH'}
+            </span>
+            <div className="w-full h-1 bg-gray-700 mt-1"></div>
+        </div>
         <div className="text-center w-1/3">
-          <p className="text-xs text-gray-400 uppercase font-bold">Opponent</p>
-          <p className="text-3xl font-mono font-bold text-red-500">{scores.opponent}</p>
+          <p className="font-pixel text-[10px] text-red-400">CPU</p>
+          <p className="text-4xl font-pixel text-white">{scores.opponent}</p>
         </div>
       </div>
 
       {/* PHASE: SELECTION */}
       {gameState === GameState.SELECTION && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <div className="flex-1 flex flex-col h-full overflow-hidden retro-box p-4 bg-gray-900">
           <div className="text-center mb-4 shrink-0">
-            <h2 className="text-2xl font-bold mb-1">Select Your Team</h2>
-            <div className="inline-block bg-[#0F1419] border border-[#0066CC] text-[#0066CC] px-4 py-1 rounded-full font-mono font-bold text-sm mb-3">
-              00:{timeLeft.toString().padStart(2, '0')}
+            <h2 className="text-lg font-pixel text-yellow-400 mb-2">SELECT CLUB</h2>
+            <div className="font-pixel text-red-500 text-sm mb-2 blink">
+              TIME: {timeLeft}
             </div>
             
-            {/* Search Bar */}
             <input 
                 type="text"
-                placeholder="Search teams..."
+                placeholder="FILTER TEAMS..."
                 value={teamFilter}
                 onChange={(e) => setTeamFilter(e.target.value)}
-                className="w-full bg-[#1E2732] border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-[#0066CC] transition-colors"
+                className="w-full bg-black border-2 border-green-700 text-green-500 px-2 py-2 font-pixel text-xs uppercase focus:outline-none focus:border-green-400"
             />
           </div>
 
-          {/* Teams Grid - Denser for visibility */}
           <div className="flex-1 overflow-y-auto min-h-0 mb-4 pr-1">
              {!isDbLoaded && (
-                 <div className="text-center py-8 text-gray-500 animate-pulse">Loading all teams from database...</div>
+                 <div className="text-center py-8 text-gray-500 font-pixel text-xs">LOADING DATABASE...</div>
              )}
              
              <div className="grid grid-cols-3 gap-2">
@@ -322,34 +335,35 @@ const GamePage: React.FC = () => {
                 ))}
             </div>
             {filteredTeams.length === 0 && isDbLoaded && (
-                <div className="text-center py-8 text-gray-500">No teams found matching "{teamFilter}"</div>
+                <div className="text-center py-8 text-gray-500 text-xs">NO TEAMS FOUND</div>
             )}
           </div>
 
-          <div className="shrink-0 pt-2 pb-6">
-            <Button fullWidth onClick={startReveal} disabled={!userTeam}>Confirm Selection</Button>
+          <div className="shrink-0 pt-2">
+            <Button fullWidth onClick={startReveal} disabled={!userTeam}>
+                CONFIRM
+            </Button>
           </div>
         </div>
       )}
 
       {/* PHASE: REVEAL */}
       {gameState === GameState.REVEAL && (
-        <div className="flex-1 flex flex-col items-center justify-center space-y-8 animate-pulse">
-          <h2 className="text-3xl font-bold">MATCHUP</h2>
-          <div className="w-full flex items-center justify-between px-4">
+        <div className="flex-1 flex flex-col items-center justify-center space-y-8 retro-box bg-black p-4">
+          <h2 className="text-2xl font-pixel text-yellow-400 blink">VERSUS</h2>
+          <div className="w-full flex items-center justify-between px-2">
              <div className="text-center w-5/12">
-                <div className="w-20 h-20 rounded-full mb-3 border-4 border-white shadow-xl mx-auto flex items-center justify-center text-xs font-bold"
-                  style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]}, ${userTeam?.colors[1]})` }}>
-                    {/* Fallback if no logo, just color */}
+                <div className="w-20 h-20 mb-4 border-4 border-blue-500 mx-auto bg-gray-800 flex items-center justify-center">
+                    <div className="w-16 h-16" style={{ background: userTeam?.colors[0] }}></div>
                 </div>
-                <p className="font-bold text-lg leading-tight">{userTeam?.name}</p>
+                <p className="font-pixel text-xs text-blue-400">{userTeam?.name}</p>
              </div>
-             <div className="text-2xl font-mono font-bold text-gray-500">VS</div>
+             <div className="text-2xl font-pixel text-white">VS</div>
              <div className="text-center w-5/12">
-                <div className="w-20 h-20 rounded-full mb-3 border-4 border-white shadow-xl mx-auto flex items-center justify-center text-xs font-bold"
-                  style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]}, ${opponentTeam?.colors[1]})` }}>
+                <div className="w-20 h-20 mb-4 border-4 border-red-500 mx-auto bg-gray-800 flex items-center justify-center">
+                    <div className="w-16 h-16" style={{ background: opponentTeam?.colors[0] }}></div>
                 </div>
-                <p className="font-bold text-lg leading-tight">{opponentTeam?.name}</p>
+                <p className="font-pixel text-xs text-red-400">{opponentTeam?.name}</p>
              </div>
           </div>
         </div>
@@ -357,42 +371,35 @@ const GamePage: React.FC = () => {
 
       {/* PHASE: PLAYING */}
       {(gameState === GameState.PLAYING || gameState === GameState.ROUND_END) && (
-        <div className="flex-1 flex flex-col min-h-0">
-           <div className="bg-[#1E2732] rounded-xl p-4 mb-4 border border-gray-700 flex justify-between items-center shadow-md shrink-0">
-              <div className="flex items-center gap-2 max-w-[40%]">
-                <div className="w-8 h-8 rounded-full shrink-0 border border-white/20" style={{ background: userTeam?.colors[0] }} />
-                <span className="font-bold truncate text-sm">{userTeam?.name}</span>
-              </div>
-              <span className="text-gray-500 font-mono text-[10px] uppercase px-2">Crossover</span>
-              <div className="flex items-center gap-2 max-w-[40%] justify-end">
-                <span className="font-bold truncate text-sm text-right">{opponentTeam?.name}</span>
-                <div className="w-8 h-8 rounded-full shrink-0 border border-white/20" style={{ background: opponentTeam?.colors[0] }} />
-              </div>
+        <div className="flex-1 flex flex-col min-h-0 retro-box bg-gray-900 p-2">
+           {/* Header Info */}
+           <div className="bg-black border-b-2 border-gray-700 p-2 mb-2 flex justify-between items-center text-xs font-pixel">
+              <span className="text-blue-400">{userTeam?.name}</span>
+              <span className="text-gray-500">X-OVER</span>
+              <span className="text-red-400">{opponentTeam?.name}</span>
            </div>
 
-           <div className="flex-1 overflow-y-auto mb-4 space-y-2 pr-1 min-h-0">
+           {/* Commentary Log (Terminal Style) */}
+           <div 
+             ref={scrollRef}
+             className="flex-1 overflow-y-auto mb-2 space-y-1 p-2 bg-black border-2 border-gray-700 font-mono text-sm leading-tight shadow-inner"
+             style={{ fontFamily: "'VT323', monospace", fontSize: "1.2rem" }}
+           >
               {messages.length === 0 && (
-                  <div className="text-center text-gray-500 py-10 text-sm">
-                      {possibleAnswersCount === 0 
-                        ? "Checking database..." 
-                        : "Waiting for your answer..."}
+                  <div className="text-green-700">
+                      > WAITING FOR INPUT...<br/>
+                      > {possibleAnswersCount === 0 ? "DATABASE CHECKING..." : "ENTER PLAYER SURNAME"}
                   </div>
               )}
               {messages.map((msg, idx) => (
-                <div key={idx} className={`p-3 rounded-lg text-sm font-medium flex flex-col ${
-                    msg.isSuccess ? 'bg-green-500/20 text-green-200 border border-green-500/50' : 
-                    msg.isError ? 'bg-red-500/20 text-red-200 border border-red-500/50' : 
-                    'bg-gray-800 text-gray-300'
-                  }`}>
-                  <div className="flex justify-between items-center w-full">
-                    <span>{msg.text}</span>
-                    {msg.source && <span className="text-[10px] opacity-75 font-mono border border-current px-1 rounded ml-2 whitespace-nowrap">{msg.source === 'LOCAL' ? '⚡ DB' : '🤖 AI'}</span>}
-                  </div>
-                  {/* Display History if available */}
+                <div key={idx} className={`
+                    ${msg.isSuccess ? 'text-green-400' : msg.isError ? 'text-red-500' : 'text-yellow-200'}
+                `}>
+                  {msg.text}
                   {msg.history && msg.history.length > 0 && (
-                    <div className="mt-2 pl-2 border-l-2 border-current text-xs opacity-90 space-y-1">
+                    <div className="pl-4 text-gray-500 text-xs">
                       {msg.history.map((h, i) => (
-                        <div key={i}>{h}</div>
+                        <div key={i}>- {h}</div>
                       ))}
                     </div>
                   )}
@@ -400,33 +407,41 @@ const GamePage: React.FC = () => {
               ))}
            </div>
 
+           {/* Input Area */}
            {gameState === GameState.PLAYING ? (
-             <form onSubmit={handleUserSubmit} className="mt-auto shrink-0 pb-4">
-               <div className="relative">
+             <form onSubmit={handleUserSubmit} className="mt-auto shrink-0">
+               <div className="flex gap-2">
+                 <span className="self-center font-pixel text-green-500 text-xs">{'>'}</span>
                  <input
                    ref={inputRef}
                    type="text"
                    value={inputValue}
                    onChange={(e) => setInputValue(e.target.value)}
                    disabled={possibleAnswersCount === 0}
-                   className="w-full bg-[#0F1419] border-2 border-[#0066CC] rounded-xl px-4 py-4 text-lg font-bold text-white focus:outline-none focus:ring-4 focus:ring-[#0066CC]/30 placeholder-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                   placeholder={possibleAnswersCount === 0 ? "No answers possible" : "Type surname..."}
+                   className="flex-1 bg-black text-green-400 font-pixel text-xs p-3 border-2 border-green-800 focus:outline-none focus:border-green-500 uppercase"
+                   placeholder={possibleAnswersCount === 0 ? "NO MATCHES" : "TYPE NAME..."}
                    autoComplete="off"
                    autoFocus
                  />
-                 <button type="submit" disabled={possibleAnswersCount === 0} className="absolute right-2 top-2 bottom-2 bg-[#0066CC] px-4 rounded-lg font-bold shadow-lg disabled:opacity-50">GO</button>
+                 <Button type="submit" disabled={possibleAnswersCount === 0 || !inputValue.trim()} className="px-3">
+                    ENTER
+                 </Button>
                </div>
              </form>
            ) : (
-             <div className="mt-auto space-y-3 shrink-0 pb-6">
-               <div className="bg-[#1E2732] p-4 rounded-xl text-center border border-gray-700">
-                 <h3 className="text-xl font-bold text-white">
-                   {messages.find(m => m.isSuccess) ? 'Point for You!' : (possibleAnswersCount === 0 ? 'Draw (No Players)' : 'Point for AI')}
+             <div className="mt-auto space-y-2 shrink-0">
+               <div className={`p-2 text-center border-2 ${
+                   messages.find(m => m.isSuccess) 
+                    ? 'bg-green-900 border-green-500 text-green-100' 
+                    : 'bg-red-900 border-red-500 text-red-100'
+               }`}>
+                 <h3 className="font-pixel text-xs">
+                   {messages.find(m => m.isSuccess) ? 'PLAYER 1 WINS ROUND' : 'CPU WINS ROUND'}
                  </h3>
                </div>
-               <div className="grid grid-cols-2 gap-3">
-                    <Button fullWidth onClick={nextRound}>Next Round</Button>
-                    <Button fullWidth variant="secondary" onClick={() => navigate('/')}>Back to Menu</Button>
+               <div className="grid grid-cols-2 gap-2">
+                    <Button fullWidth onClick={nextRound}>NEXT ROUND</Button>
+                    <Button fullWidth variant="secondary" onClick={() => navigate('/')}>QUIT</Button>
                </div>
              </div>
            )}

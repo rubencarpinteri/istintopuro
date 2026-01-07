@@ -12,13 +12,13 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = "px-6 py-3 rounded-xl font-bold transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed";
+  const baseStyles = "px-4 py-3 font-pixel text-xs uppercase tracking-widest transition-none transform active:translate-y-1 active:shadow-none border-2 disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variants = {
-    primary: "bg-[#0066CC] hover:bg-[#0052a3] text-white shadow-lg shadow-blue-900/20",
-    secondary: "bg-[#1E2732] hover:bg-[#2A3441] text-white border border-gray-700",
-    danger: "bg-red-600 hover:bg-red-700 text-white",
-    ghost: "bg-transparent hover:bg-[#1E2732] text-gray-400 hover:text-white"
+    primary: "bg-blue-700 text-white border-white shadow-[4px_4px_0px_0px_#000] hover:bg-blue-600",
+    secondary: "bg-gray-200 text-black border-black shadow-[4px_4px_0px_0px_#000] hover:bg-white",
+    danger: "bg-red-600 text-white border-white shadow-[4px_4px_0px_0px_#000] hover:bg-red-500",
+    ghost: "bg-transparent text-gray-300 hover:text-white border-transparent hover:border-gray-500 hover:bg-gray-800"
   };
 
   return (
