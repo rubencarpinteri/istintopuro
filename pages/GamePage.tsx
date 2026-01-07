@@ -26,6 +26,8 @@ const sortHistory = (history: string[]) => {
   });
 };
 
+const normalizeStr = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 interface GameMessage {
   text?: string;        // For simple messages
   prefix?: string;      // Text before the name
@@ -207,6 +209,20 @@ const GamePage: React.FC = () => {
     }
   };
 
+  const getExtraText = async (answer: string, team1: string, team2: string) => {
+    const allMatches = await getMatchingPlayers(team1, team2);
+    const ansNorm = normalizeStr(answer);
+    const matchesNorm = allMatches.map(m => normalizeStr(m));
+    const isInDb = matchesNorm.includes(ansNorm);
+    const count = allMatches.length;
+    // If the answer is in the DB, we subtract it from the total.
+    // If it's NOT in the DB (AI find), the remaining count is the full DB count.
+    const remaining = isInDb ? count - 1 : count;
+
+    if (remaining === 0) return " ... and that's the only one we know!";
+    return ` ... plus ${remaining} others in database!`;
+  };
+
   const handleAIWin = async (answer: string) => {
     // Calculate stats before showing message
     let extraText = '';
@@ -214,17 +230,7 @@ const GamePage: React.FC = () => {
 
     if (userTeam && opponentTeam) {
         try {
-            const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
-            
-            // Check if the AI's answer is in the list
-            // We subtract 1 because the current answer is revealed
-            const remaining = allMatches.length - 1; 
-            
-            if (remaining > 0) {
-                extraText = ` (...and ${remaining} more!)`;
-            } else {
-                extraText = ` ... and that's the only one!`;
-            }
+            extraText = await getExtraText(answer, userTeam.name, opponentTeam.name);
 
             // Retrieve history for AI answer so seasons are shown
             const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
@@ -283,13 +289,7 @@ const GamePage: React.FC = () => {
     let extraText = '';
     let sortedHistory: string[] = [];
     if (userTeam && opponentTeam) {
-        const allMatches = await getMatchingPlayers(userTeam.name, opponentTeam.name);
-        const remaining = allMatches.length - 1; 
-        if (remaining > 0) {
-            extraText = ` (...and ${remaining} more!)`;
-        } else {
-            extraText = ` ... and that's the only one!`;
-        }
+        extraText = await getExtraText(answer, userTeam.name, opponentTeam.name);
         if (history) {
             sortedHistory = sortHistory(history);
         }
