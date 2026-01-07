@@ -83,14 +83,14 @@ export const verifyAnswer = async (
       
       // Robust Name Matching:
       // 1. Exact match
-      // 2. Surname match (dbName ends with input) -> "Luca Toni" ends with "toni"
-      // 3. Word match (input matches one of the names) -> "Ronaldo" matches "Cristiano Ronaldo"
+      // 2. End Word match (dbName ends with " " + input) -> "Arturo Di Napoli" ends with " Di Napoli"
+      // 3. Word match (input matches one of the name parts) -> "Ronaldo" matches "Cristiano Ronaldo"
       const nameParts = dbName.split(' ');
-      const isSurnameMatch = nameParts[nameParts.length - 1] === inputClean;
       const isExactMatch = dbName === inputClean;
+      const isEndWordMatch = dbName.endsWith(" " + inputClean); 
       const isWordMatch = nameParts.includes(inputClean);
 
-      if (isExactMatch || isSurnameMatch || isWordMatch) {
+      if (isExactMatch || isEndWordMatch || isWordMatch) {
         
         const teams = data.teams.map(t => normalize(t));
         let isValid = false;
@@ -146,7 +146,7 @@ export const verifyAnswer = async (
             isValid: true, 
             source: 'AI',
             history: aiResult.history || [],
-            correctedName: userInput.toUpperCase() // Basic formatting for AI results
+            correctedName: aiResult.fullName || userInput.toUpperCase() // Use fullName from AI if available
         };
       }
   }

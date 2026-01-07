@@ -5,19 +5,22 @@ const MODEL_NAME = 'gemini-3-flash-preview';
 const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Validate if a player played for both teams and get history
-export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<{ isValid: boolean, history: string[] }> => {
+export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<{ isValid: boolean, history: string[], fullName?: string }> => {
   try {
     // Fixed: Create a new GoogleGenAI instance right before making an API call as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const isSameTeam = normalize(team1) === normalize(team2);
-    let prompt = `Verify if football player "${playerName}" played for BOTH ${team1} and ${team2} in their senior career. 
-    If they did, provide a list of strings indicating the team and the seasons or years they played there (e.g. "Sampdoria 2003-2005").`;
+    let prompt = `Verify if football player "${playerName}" played for BOTH ${team1} and ${team2} in their senior career.`;
     
     if (isSameTeam) {
-        prompt = `Verify if football player "${playerName}" is a "One Club Man" for ${team1} in Serie A (played ONLY for ${team1} and no other major Italian club). 
-        If true, provide their career years with the club.`;
+        prompt = `Verify if football player "${playerName}" is a "One Club Man" for ${team1} in Serie A (played ONLY for ${team1} and no other major Italian club).`;
     }
+
+    prompt += ` Return a JSON object with:
+    1. "isValid": boolean indicating if the condition is met.
+    2. "history": a list of strings indicating the team and the seasons or years they played there (e.g. "Sampdoria 2003-2005").
+    3. "fullName": the full name of the player found (e.g. "Arturo Di Napoli").`;
 
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
@@ -31,7 +34,8 @@ export const validateCrossover = async (team1: string, team2: string, playerName
             history: { 
               type: Type.ARRAY,
               items: { type: Type.STRING }
-            }
+            },
+            fullName: { type: Type.STRING }
           },
         },
       },
@@ -39,7 +43,7 @@ export const validateCrossover = async (team1: string, team2: string, playerName
     
     // Fixed: Access response.text directly as a property
     const result = JSON.parse(response.text || '{"isValid": false, "history": []}');
-    return { isValid: result.isValid, history: result.history || [] };
+    return { isValid: result.isValid, history: result.history || [], fullName: result.fullName };
   } catch (error) {
     console.error("Gemini validation error:", error);
     return { isValid: false, history: [] };
