@@ -389,7 +389,7 @@ const GamePage: React.FC = () => {
                     <div className="flex items-center gap-3 w-full">
                          <div className="h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)]" 
                               style={{ background: `linear-gradient(135deg, ${userTeam.colors[0]} 50%, ${userTeam.colors[1]} 50%)` }}></div>
-                         <span className="font-pixel text-lg sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] uppercase break-words min-w-0">
+                         <span className="font-pixel text-base sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] uppercase whitespace-nowrap truncate min-w-0">
                             {userTeam.name}
                          </span>
                     </div>
@@ -421,7 +421,7 @@ const GamePage: React.FC = () => {
                  <div className="flex items-center gap-3 w-full justify-end">
                       {opponentTeam ? (
                          <>
-                            <span className="font-pixel text-lg sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] text-right uppercase break-words min-w-0">
+                            <span className="font-pixel text-base sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] text-right uppercase whitespace-nowrap truncate min-w-0">
                                 {gameState === GameState.SELECTION ? '???' : opponentTeam.name}
                             </span>
                             <div className={`h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] flex items-center justify-center overflow-hidden ${gameState === GameState.SELECTION ? 'bg-black' : ''}`}
@@ -540,21 +540,21 @@ const GamePage: React.FC = () => {
           <div className="text-center space-y-2">
               <h2 className="text-2xl font-pixel text-yellow-400 blink">MATCHING...</h2>
           </div>
-          <div className="w-full flex items-center justify-center gap-8 px-2">
-             <div className="text-center transform scale-110 transition-transform">
-                <div className="w-24 h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                    <div className="w-20 h-20" style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]} 50%, ${userTeam?.colors[1]} 50%)` }}></div>
+          <div className="w-full flex flex-row items-center justify-center gap-2 sm:gap-8 px-2">
+             <div className="flex-1 flex flex-col items-center transform scale-110 transition-transform max-w-[45%]">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20" style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]} 50%, ${userTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-xl text-white bg-black px-3 py-1 border border-gray-700">{userTeam?.name}</p>
+                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 border border-gray-700 truncate w-full text-center">{userTeam?.name}</p>
              </div>
              
              <div className="text-4xl font-pixel text-white">&</div>
 
-             <div className="text-center transform scale-110 transition-transform">
-                <div className="w-24 h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                    <div className="w-20 h-20" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
+             <div className="flex-1 flex flex-col items-center transform scale-110 transition-transform max-w-[45%]">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-xl text-white bg-black px-3 py-1 border border-gray-700">{opponentTeam?.name}</p>
+                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 border border-gray-700 truncate w-full text-center">{opponentTeam?.name}</p>
              </div>
           </div>
         </div>
