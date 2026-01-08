@@ -374,69 +374,69 @@ const GamePage: React.FC = () => {
       
       {/* --- STICKY HUD --- */}
       <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl">
-         <div className="grid grid-cols-[1fr_auto_1fr] items-center p-2 min-h-[60px]">
+         <div className="grid grid-cols-[1fr_auto_1fr] items-center p-3 min-h-[100px] sm:min-h-[120px]">
              
              {/* PLAYER 1 */}
-             <div className="flex flex-col items-start min-w-0 pr-1">
-                 <div className="flex items-center gap-1 mb-1">
-                     <span className="text-[10px] text-cyan-400 font-pixel tracking-widest bg-black/40 px-1 rounded">PLAYER 1</span>
-                     <div className="flex h-5 items-center bg-black/40 px-2 rounded border border-white/10">
-                        <span className="text-sm font-pixel text-white">{scores.user}</span>
+             <div className="flex flex-col items-start min-w-0 pr-2">
+                 <div className="flex items-center gap-2 mb-2">
+                     <span className="text-xs text-cyan-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">P1</span>
+                     <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
+                        <span className="text-lg font-pixel text-white">{scores.user}</span>
                      </div>
                  </div>
                  
                  {userTeam ? (
-                    <div className="flex items-center gap-2 w-full">
-                         <div className="h-8 w-8 border-2 border-white shrink-0 shadow-lg" 
+                    <div className="flex items-center gap-3 w-full">
+                         <div className="h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)]" 
                               style={{ background: `linear-gradient(135deg, ${userTeam.colors[0]} 50%, ${userTeam.colors[1]} 50%)` }}></div>
-                         <span className="font-pixel text-sm sm:text-base text-white truncate leading-tight drop-shadow-md">
+                         <span className="font-pixel text-lg sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] uppercase break-words min-w-0">
                             {userTeam.name}
                          </span>
                     </div>
                  ) : (
-                    <span className="font-pixel text-xs text-gray-500 animate-pulse">SELECT TEAM...</span>
+                    <span className="font-pixel text-sm text-gray-500 animate-pulse">SELECT TEAM...</span>
                  )}
              </div>
 
              {/* CENTER STATUS */}
              <div className="flex flex-col items-center justify-center px-2">
                  {gameState === GameState.SELECTION ? (
-                    <div className="text-xl font-pixel text-yellow-400 tabular-nums drop-shadow-md">
+                    <div className="text-3xl font-pixel text-yellow-400 tabular-nums drop-shadow-md">
                         {formatTime(timeLeft)}
                     </div>
                  ) : (
-                    <span className="text-gray-500 font-pixel text-xl font-bold opacity-50">VS</span>
+                    <div className="text-2xl font-pixel text-gray-600 font-bold opacity-50">VS</div>
                  )}
              </div>
 
              {/* CPU */}
-             <div className="flex flex-col items-end min-w-0 pl-1">
-                 <div className="flex items-center gap-1 mb-1">
-                     <div className="flex h-5 items-center bg-black/40 px-2 rounded border border-white/10">
-                        <span className="text-sm font-pixel text-white">{scores.opponent}</span>
+             <div className="flex flex-col items-end min-w-0 pl-2">
+                 <div className="flex items-center gap-2 mb-2">
+                     <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
+                        <span className="text-lg font-pixel text-white">{scores.opponent}</span>
                      </div>
-                     <span className="text-[10px] text-red-400 font-pixel tracking-widest bg-black/40 px-1 rounded">CPU</span>
+                     <span className="text-xs text-red-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">CPU</span>
                  </div>
 
-                 <div className="flex items-center gap-2 w-full justify-end">
+                 <div className="flex items-center gap-3 w-full justify-end">
                       {opponentTeam ? (
                          <>
-                            <span className="font-pixel text-sm sm:text-base text-white truncate leading-tight drop-shadow-md text-right">
+                            <span className="font-pixel text-lg sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] text-right uppercase break-words min-w-0">
                                 {gameState === GameState.SELECTION ? '???' : opponentTeam.name}
                             </span>
-                            <div className={`h-8 w-8 border-2 border-white shrink-0 shadow-lg flex items-center justify-center overflow-hidden ${gameState === GameState.SELECTION ? 'bg-black' : ''}`}
+                            <div className={`h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] flex items-center justify-center overflow-hidden ${gameState === GameState.SELECTION ? 'bg-black' : ''}`}
                                  style={gameState !== GameState.SELECTION ? { background: `linear-gradient(135deg, ${opponentTeam.colors[0]} 50%, ${opponentTeam.colors[1]} 50%)` } : {}}>
                                  {gameState === GameState.SELECTION && (
                                      <div className="flex gap-1 items-center">
-                                         <div className="w-1 h-1 bg-red-600 rounded-full animate-pulse"></div>
-                                         <div className="w-1 h-1 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></div>
-                                         <div className="w-1 h-1 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></div>
+                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></div>
+                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></div>
+                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></div>
                                      </div>
                                  )}
                             </div>
                          </>
                       ) : (
-                         <span className="font-pixel text-xs text-gray-500">WAITING</span>
+                         <span className="font-pixel text-sm text-gray-500">WAITING</span>
                       )}
                  </div>
              </div>
@@ -444,7 +444,7 @@ const GamePage: React.FC = () => {
 
          {/* Timer Progress Bar */}
          {gameState === GameState.SELECTION && (
-             <div className="w-full h-1.5 bg-gray-900 border-t border-gray-700 relative">
+             <div className="w-full h-2 bg-gray-900 border-t border-gray-700 relative">
                  <div 
                     className="h-full bg-gradient-to-r from-green-500 via-yellow-400 to-red-500 transition-all duration-1000 ease-linear"
                     style={{ width: `${(timeLeft / 30) * 100}%` }}
@@ -545,7 +545,7 @@ const GamePage: React.FC = () => {
                 <div className="w-24 h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                     <div className="w-20 h-20" style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]} 50%, ${userTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-sm text-white bg-black px-2 py-1 border border-gray-700">{userTeam?.name}</p>
+                <p className="font-pixel text-xl text-white bg-black px-3 py-1 border border-gray-700">{userTeam?.name}</p>
              </div>
              
              <div className="text-4xl font-pixel text-white">&</div>
@@ -554,7 +554,7 @@ const GamePage: React.FC = () => {
                 <div className="w-24 h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                     <div className="w-20 h-20" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-sm text-white bg-black px-2 py-1 border border-gray-700">{opponentTeam?.name}</p>
+                <p className="font-pixel text-xl text-white bg-black px-3 py-1 border border-gray-700">{opponentTeam?.name}</p>
              </div>
           </div>
         </div>
