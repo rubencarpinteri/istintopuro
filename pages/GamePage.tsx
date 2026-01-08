@@ -176,9 +176,8 @@ const GamePage: React.FC = () => {
         const candidates = filteredTeams.length > 0 ? filteredTeams : availableTeams;
         const random = candidates[Math.floor(Math.random() * candidates.length)];
         
-        setFocusedTeamId(random.id);
-        
-        // Auto scroll to it logic could go here, but omitted for brevity
+        // Immediately lock the random selection
+        confirmSelection(random);
     }
   };
 
@@ -235,20 +234,11 @@ const GamePage: React.FC = () => {
     }
   };
 
-  const getExtraText = async (answer: string, team1: string, team2: string) => {
-    const allMatches = await getMatchingPlayers(team1, team2);
-    const total = allMatches.length;
-    if (total <= 1) return "! (Only one!)";
-    return `! (${total} possible!)`;
-  };
-
   const handleAIWin = async (answer: string) => {
-    let extraText = '';
     let history: string[] | undefined = [];
 
     if (userTeam && opponentTeam) {
         try {
-            extraText = await getExtraText(answer, userTeam.name, opponentTeam.name);
             const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
             if (verifyResult.isValid && verifyResult.history) {
               history = sortHistory(verifyResult.history);
@@ -262,7 +252,6 @@ const GamePage: React.FC = () => {
     setMessages(prev => [...prev, { 
       prefix: "> CPU scores with ",
       highlight: answer.toUpperCase(),
-      suffix: extraText,
       isCpuWin: true,
       history: history 
     }]);
@@ -340,10 +329,8 @@ const GamePage: React.FC = () => {
   };
 
   const handleSuccess = async (answer: string, source: string, history?: string[]) => {
-    let extraText = '';
     let sortedHistory: string[] = [];
     if (userTeam && opponentTeam) {
-        extraText = await getExtraText(answer, userTeam.name, opponentTeam.name);
         if (history) {
             sortedHistory = sortHistory(history);
         }
@@ -353,7 +340,6 @@ const GamePage: React.FC = () => {
     setMessages(prev => [...prev, { 
       prefix: "> GOAL! ",
       highlight: answer.toUpperCase(),
-      suffix: extraText,
       isSuccess: true,
       source,
       history: sortedHistory
@@ -604,7 +590,9 @@ const GamePage: React.FC = () => {
                     {msg.highlight ? (
                         <>
                             {msg.prefix}
-                            <span className={`${msg.isCpuWin ? 'text-white bg-red-900 px-1' : 'text-black bg-[#44FF44] px-1'} tracking-wider`}>{msg.highlight}</span>
+                            <span className={`inline-block px-1.5 py-0.5 border tracking-wider shadow-[1px_1px_0_black] text-[#EEEEEE] bg-black/35 ${msg.isCpuWin ? 'border-[#FF4444]' : 'border-[#44FF44]'}`}>
+                                {msg.highlight}
+                            </span>
                             <span className={msg.isCpuWin ? 'text-[#FF4444] ml-1' : 'ml-1'}>{msg.suffix}</span>
                         </>
                     ) : (
@@ -642,10 +630,13 @@ const GamePage: React.FC = () => {
                   </button>
                   <button 
                     onClick={handleSurrender}
-                    className="text-red-500 hover:text-red-400 px-2 py-1 flex items-center gap-1"
+                    className="text-red-500 hover:text-red-400 px-2 py-1 flex items-center gap-2"
                     disabled={isUserValidating.current}
                   >
-                    GIVE UP 🏳
+                    GIVE UP
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ shapeRendering: 'crispEdges' }}>
+                        <path d="M3 6h6v5h-6z M9 7h5v2h-5z M5 3h2v3h-2z" />
+                    </svg>
                   </button>
                </div>
                
