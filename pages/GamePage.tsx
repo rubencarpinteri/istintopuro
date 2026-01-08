@@ -251,7 +251,7 @@ const GamePage: React.FC = () => {
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     setMessages(prev => [...prev, { 
       prefix: "> CPU scores with ",
-      highlight: answer.toUpperCase(),
+      highlight: answer.toUpperCase() + "!",
       isCpuWin: true,
       history: history 
     }]);
@@ -280,7 +280,7 @@ const GamePage: React.FC = () => {
     
     const revealMsg: GameMessage | null = answer ? {
         prefix: "> ONE ANSWER WAS: ",
-        highlight: answer.toUpperCase(),
+        highlight: answer.toUpperCase() + "!",
         isCpuWin: true,
         history: history
     } : null;
@@ -339,7 +339,7 @@ const GamePage: React.FC = () => {
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
     setMessages(prev => [...prev, { 
       prefix: "> GOAL! ",
-      highlight: answer.toUpperCase(),
+      highlight: answer.toUpperCase() + "!",
       isSuccess: true,
       source,
       history: sortedHistory
@@ -584,16 +584,20 @@ const GamePage: React.FC = () => {
               )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`
-                    ${msg.isSuccess ? 'text-[#44FF44]' : msg.isError ? 'text-[#FF4444]' : msg.isCpuWin ? 'text-white' : 'text-[#FFFF44]'}
+                    ${msg.isSuccess ? 'text-[#44FF44]' : msg.isError ? 'text-[#FF4444]' : msg.isCpuWin ? 'text-gray-300' : 'text-[#FFFF44]'}
                 `}>
                   <span className={msg.isError || msg.isSuccess || msg.isCpuWin ? "text-shadow-sm" : ""}>
                     {msg.highlight ? (
                         <>
                             {msg.prefix}
-                            <span className={`inline-block px-1.5 py-0.5 border tracking-wider shadow-[1px_1px_0_black] text-[#EEEEEE] bg-black/35 ${msg.isCpuWin ? 'border-[#FF4444]' : 'border-[#44FF44]'}`}>
+                            <span className={`font-bold tracking-widest ${
+                                msg.isCpuWin ? 'text-[#FF6666]' : 
+                                msg.isSuccess ? 'text-[#88FF88]' : 
+                                'text-[#FFFF66]'
+                            }`}>
                                 {msg.highlight}
                             </span>
-                            <span className={msg.isCpuWin ? 'text-[#FF4444] ml-1' : 'ml-1'}>{msg.suffix}</span>
+                            <span className={msg.isCpuWin ? 'text-[#FF6666]' : ''}>{msg.suffix}</span>
                         </>
                     ) : (
                         msg.text
@@ -635,7 +639,7 @@ const GamePage: React.FC = () => {
                   >
                     GIVE UP
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ shapeRendering: 'crispEdges' }}>
-                        <path d="M3 6h6v5h-6z M9 7h5v2h-5z M5 3h2v3h-2z" />
+                        <path d="M4 6h2v2h-2z M10 6h2v2h-2z M5 11h6v1H5z M4 12h1v1h-1z M11 12h1v1h-1z" />
                     </svg>
                   </button>
                </div>

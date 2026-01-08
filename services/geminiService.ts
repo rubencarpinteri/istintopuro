@@ -7,7 +7,6 @@ const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 // Validate if a player played for both teams and get history
 export const validateCrossover = async (team1: string, team2: string, playerName: string): Promise<{ isValid: boolean, history: string[], fullName?: string }> => {
   try {
-    // Fixed: Create a new GoogleGenAI instance right before making an API call as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const isSameTeam = normalize(team1) === normalize(team2);
@@ -19,7 +18,7 @@ export const validateCrossover = async (team1: string, team2: string, playerName
 
     prompt += ` Return a JSON object with:
     1. "isValid": boolean indicating if the condition is met.
-    2. "history": a list of strings indicating the team and the seasons or years they played there (e.g. "Sampdoria 2003-2005").
+    2. "history": a list of strings indicating ONLY the seasons they played for ${team1} and ${team2} (e.g. "${team1} 2003-2005"). Do not list other teams.
     3. "fullName": the full name of the player found (e.g. "Arturo Di Napoli").`;
 
     const response = await ai.models.generateContent({
@@ -41,7 +40,6 @@ export const validateCrossover = async (team1: string, team2: string, playerName
       },
     });
     
-    // Fixed: Access response.text directly as a property
     const result = JSON.parse(response.text || '{"isValid": false, "history": []}');
     return { isValid: result.isValid, history: result.history || [], fullName: result.fullName };
   } catch (error) {
@@ -99,11 +97,12 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
 
   // 2. Fallback to Gemini AI if Local DB yielded nothing
   try {
-    // Fixed: Create a new GoogleGenAI instance right before making an API call as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const isSameTeam = normalize(team1) === normalize(team2);
-    let prompt = `List up to 5 football players who played for both ${team1} and ${team2} in Serie A history. Return only surnames.`;
+    let prompt = `List up to 5 football players who played for both ${team1} and ${team2} in Serie A history.
+    IMPORTANT: Verify these players actually exist and played for both clubs. Do not hallucinate names like "Massimiliano Saudati".
+    Return only true surnames.`;
     
     if (isSameTeam) {
         prompt = `List up to 5 football players who are iconic "One Club Men" for ${team1} in Serie A (played only for this club in Italy). Return only surnames.`;
@@ -121,7 +120,6 @@ export const getAIAnswers = async (team1: string, team2: string): Promise<string
       },
     });
 
-    // Fixed: Access response.text directly as a property
     const answers = JSON.parse(response.text || '[]');
     return answers;
   } catch (error) {

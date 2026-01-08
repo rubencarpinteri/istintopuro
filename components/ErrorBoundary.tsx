@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -9,12 +9,7 @@ interface ErrorBoundaryState {
   error?: Error;
 }
 
-/**
- * Fixed: Explicitly extend Component from react and ensure generic parameters are applied to correctly type state and props.
- * This resolves issues where 'props' or 'state' might not be correctly recognized by the TypeScript compiler
- * when using the React namespace directly in some environments.
- */
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = {
     hasError: false
   };

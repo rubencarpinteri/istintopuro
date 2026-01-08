@@ -15,6 +15,27 @@ const titleCase = (str: string) => {
     .join(' ');
 };
 
+// Helper to filter history strictly to relevant teams
+const filterHistory = (history: string[], team1: string, team2: string, isSameTeam: boolean): string[] => {
+  const t1 = normalize(team1);
+  const t2 = normalize(team2);
+  
+  return history.filter(h => {
+    const hNorm = normalize(h);
+    if (isSameTeam) {
+      return hNorm.includes(t1);
+    }
+    return hNorm.includes(t1) || hNorm.includes(t2);
+  });
+};
+
+// Helper to clean up typos in display
+const cleanHistoryText = (history: string[]): string[] => {
+  return history.map(h => {
+     return h.replace(/Chievi Verona/gi, 'Chievo Verona').replace(/Sampdroria/gi, 'Sampdoria');
+  });
+};
+
 interface VerificationResult {
   isValid: boolean;
   source: 'LOCAL' | 'AI';
@@ -108,24 +129,16 @@ export const verifyAnswer = async (
         }
 
         if (isValid) {
-           // Filter history for display. 
-           const relevantHistory = isSameTeam 
-             ? data.history // Show all history for one-club men
-             : data.history.filter(h => {
-                const hNorm = normalize(h);
-                return hNorm.includes(normalizedTeam1) || hNorm.includes(normalizedTeam2);
-             });
-
+           // Strict Filter: Only show history for the relevant teams
+           let relevantHistory = filterHistory(data.history, team1, team2, isSameTeam);
+           
            // Clean up typos in display
-           const cleanHistory = (relevantHistory.length > 0 ? relevantHistory : data.history).map(h => {
-              return h.replace(/Chievi Verona/gi, 'Chievo Verona').replace(/Sampdroria/gi, 'Sampdoria');
-           });
+           const displayHistory = cleanHistoryText(relevantHistory);
 
            return { 
              isValid: true, 
              source: 'LOCAL',
-             // Always prefer relevant history, but fall back to full history to ensure years are shown
-             history: cleanHistory,
+             history: displayHistory,
              correctedName: titleCase(dbName)
            };
         }
@@ -142,11 +155,14 @@ export const verifyAnswer = async (
       
       const aiResult = await validateWithGemini(team1, team2, userInput);
       if (aiResult.isValid) {
+        // Also strictly filter AI returned history to prevent full career dumps
+        let relevantAiHistory = filterHistory(aiResult.history || [], team1, team2, isSameTeam);
+        
         return { 
             isValid: true, 
             source: 'AI',
-            history: aiResult.history || [],
-            correctedName: aiResult.fullName || userInput.toUpperCase() // Use fullName from AI if available
+            history: relevantAiHistory,
+            correctedName: aiResult.fullName || userInput.toUpperCase() 
         };
       }
   }
