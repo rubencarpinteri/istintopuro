@@ -483,7 +483,7 @@ const GamePage: React.FC = () => {
                  </div>
              )}
              
-             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {filteredTeams.map(team => {
                     // Logic for card status:
                     // 1. If we have a userTeam locked, that one is 'locked', everyone else is 'disabled'
