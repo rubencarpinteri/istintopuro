@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 const GamePage = React.lazy(() => import('./pages/GamePage'));
 const DataConverter = React.lazy(() => import('./pages/DataConverter'));
 const LobbyPage = React.lazy(() => import('./pages/LobbyPage'));
+const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] text-white">
@@ -32,6 +33,7 @@ const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/game" element={<GamePage />} />
               <Route path="/lobby" element={<LobbyPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               {/* Secret route to process your CSVs */}
               <Route path="/convert" element={<DataConverter />} />
               <Route path="*" element={<Navigate to="/" />} />

@@ -28,6 +28,9 @@ const HomePage: React.FC = () => {
             <Button fullWidth onClick={() => navigate('/lobby')} variant="primary" className="text-sm bg-purple-700 hover:bg-purple-600 border-purple-300">
               2P VS FRIEND
             </Button>
+            <Button fullWidth onClick={() => navigate('/profile')} variant="secondary" className="text-sm border-gray-400">
+              MEMORY CARD (STATS)
+            </Button>
         </div>
       </main>
 

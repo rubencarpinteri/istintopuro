@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { p2pManager } from '../services/p2pService';
+import { storageService } from '../services/storageService';
 
 const LobbyPage: React.FC = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState(localStorage.getItem('calcio_username') || '');
+  // Initialize with storage service username or localstorage fallback
+  const [username, setUsername] = useState(storageService.getStats().username || '');
   const [roomCode, setRoomCode] = useState(''); // For joining
   const [myRoomCode, setMyRoomCode] = useState(''); // If hosting
   const [status, setStatus] = useState<'idle' | 'initializing' | 'waiting' | 'connecting'>('idle');
@@ -13,10 +15,8 @@ const LobbyPage: React.FC = () => {
   const [mode, setMode] = useState<'host' | 'join'>('host');
 
   useEffect(() => {
-    // Check if we are already connected (back navigation)
-    if (p2pManager.myId) {
-       // Optional: could reset or keep session
-    }
+    // Ensure we start fresh
+    p2pManager.destroy();
   }, []);
 
   const handleInit = async () => {
@@ -24,7 +24,8 @@ const LobbyPage: React.FC = () => {
       setError('ENTER NICKNAME');
       return;
     }
-    localStorage.setItem('calcio_username', username);
+    setError(''); // Clear previous errors
+    storageService.updateUsername(username);
     
     try {
       setStatus('initializing');
@@ -37,39 +38,51 @@ const LobbyPage: React.FC = () => {
         
         // Listen for incoming connection
         p2pManager.onMessage((msg) => {
-             // As soon as we get a message (likely HANDSHAKE), go to game
              if (msg.type === 'HANDSHAKE' || msg.type === 'START_GAME') {
                  navigate('/game?mode=p2p');
              }
         });
       } else {
-        // Join mode - waiting for user to type code
+        // Init done, now ready to join
         setStatus('idle'); 
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setError('CONNECTION FAILED');
+      setError(e.message || 'CONNECTION FAILED');
       setStatus('idle');
     }
   };
 
   const handleJoin = async () => {
     if (!roomCode) return;
+    setError('');
+    
     try {
       setStatus('connecting');
+      // If peer not init, do it now
+      if (!p2pManager.myId) {
+          await p2pManager.init(username);
+      }
       await p2pManager.connect(roomCode, username);
       // Wait for connection to open
       setTimeout(() => {
          navigate('/game?mode=p2p');
       }, 500);
-    } catch (e) {
-      setError('INVALID CODE OR CONNECTION ERROR');
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || 'INVALID CODE OR ERROR');
       setStatus('idle');
     }
   };
 
+  const handleCancel = () => {
+      p2pManager.destroy();
+      setStatus('idle');
+      setError('');
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#000022] font-pixel text-white p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] font-pixel text-white p-4">
        <div className="max-w-md w-full space-y-6">
           <div className="text-center mb-8">
              <h1 className="text-3xl text-yellow-400 mb-2">MULTIPLAYER</h1>
@@ -115,21 +128,15 @@ const LobbyPage: React.FC = () => {
                  ) : (
                      <div className="text-center p-4 border-2 border-dashed border-gray-700 bg-black/50 space-y-4">
                         <p className="text-xs text-gray-400">ENTER FRIEND'S CODE</p>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2 items-stretch">
                             <input 
                                 type="text" 
                                 value={roomCode}
                                 onChange={e => setRoomCode(e.target.value.toUpperCase())}
-                                className="flex-1 bg-black border-2 border-green-500 p-2 text-center text-lg"
+                                className="flex-1 bg-black/20 border-2 border-green-500 p-3 text-center text-lg text-white/20 placeholder:text-white/20 outline-none focus:bg-black/40 min-w-0"
                                 placeholder="CODE"
                             />
-                            <Button onClick={() => {
-                                if (!p2pManager.myId) {
-                                    handleInit().then(() => handleJoin());
-                                } else {
-                                    handleJoin();
-                                }
-                            }}>JOIN</Button>
+                            <Button className="whitespace-nowrap" onClick={handleJoin}>JOIN</Button>
                         </div>
                      </div>
                  )}
@@ -143,14 +150,18 @@ const LobbyPage: React.FC = () => {
                             {myRoomCode}
                         </div>
                         <p className="text-[10px] text-gray-400 mt-4">WAITING FOR CHALLENGER...</p>
+                        <button onClick={handleCancel} className="text-xs text-red-300 underline mt-2">CANCEL</button>
                      </>
                  ) : (
-                     <div className="text-lg animate-pulse">CONNECTING...</div>
+                     <div className="flex flex-col items-center">
+                         <div className="text-lg animate-pulse mb-4">CONNECTING...</div>
+                         <button onClick={handleCancel} className="text-xs text-red-300 underline">CANCEL</button>
+                     </div>
                  )}
              </div>
           )}
           
-          {error && <p className="text-red-500 text-center text-xs bg-red-900/50 p-2 border border-red-500">{error}</p>}
+          {error && <p className="text-red-500 text-center text-xs bg-red-900/50 p-2 border border-red-500 animate-pulse">{error}</p>}
 
           <button onClick={() => navigate('/')} className="w-full text-center text-xs text-gray-500 hover:text-white mt-8">
               « BACK TO MENU

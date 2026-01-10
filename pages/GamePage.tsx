@@ -8,6 +8,7 @@ import { GameState, Team } from '../types';
 import { getAIAnswers } from '../services/geminiService';
 import { verifyAnswer, getMatchingPlayers } from '../services/verificationService';
 import { p2pManager } from '../services/p2pService';
+import { storageService } from '../services/storageService';
 
 // Color generator for teams not in constants (fallback)
 const generateColor = (str: string) => {
@@ -88,13 +89,6 @@ const GamePage: React.FC = () => {
             
             if (t1 && t2) {
                 // If I am guest, I receive the selection. 
-                // Host selected t1, so that's "their" team (opponent for me), but in this game
-                // we share the challenge. So I just set them for visual.
-                // Wait, logic:
-                // User selects TEAM A. Opponent gets assigned TEAM B.
-                // In P2P, Host selects TEAM A. 
-                // Then Host machine randomizes TEAM B.
-                // Host sends { team1: A, team2: B } to Guest.
                 setUserTeam(t1);
                 setOpponentTeam(t2);
                 
@@ -102,12 +96,10 @@ const GamePage: React.FC = () => {
                 setGameState(GameState.REVEAL);
                 setTimeout(() => {
                    setGameState(GameState.PLAYING);
-                   // Guest doesn't need to check AI answers, but needs validation DB.
-                   // Validation DB is loaded in effect.
                    getMatchingPlayers(t1.name, t2.name).then(matches => {
                        setPossibleAnswersCount(matches.length);
                    });
-                }, 4000); // 1s delay + 3s reveal
+                }, 4000); 
             }
         } 
         else if (msg.type === 'SCORE_UPDATE') {
@@ -121,16 +113,17 @@ const GamePage: React.FC = () => {
                 history: history
             }]);
             
-            // In P2P "Race", the round continues until time up or someone quits?
-            // Or "First to find X"?
-            // Let's stick to standard round reset for simplicity:
-            // Whoever finds first, wins round.
+            // Record Loss
+            if (userTeam && opponentTeam) {
+                storageService.saveMatch('LOSS', p2pManager.opponentName, `${userTeam.name} vs ${opponentTeam.name}`);
+            }
+
             setGameState(GameState.ROUND_END);
         }
     });
 
     return () => removeListener();
-  }, [isP2P, availableTeams]);
+  }, [isP2P, availableTeams, userTeam, opponentTeam]);
 
   // Load DB and extract all teams
   useEffect(() => {
@@ -180,7 +173,7 @@ const GamePage: React.FC = () => {
     }
   }, [gameState, timeLeft, isP2P]);
 
-  // AI Selection & Setup Effect (Only run if single player OR Host)
+  // AI Selection & Setup Effect
   useEffect(() => {
     if (gameState === GameState.SELECTION && availableTeams.length > 0) {
       if (!isP2P || p2pManager.isHost) {
@@ -200,7 +193,6 @@ const GamePage: React.FC = () => {
 
     if (gameState === GameState.PLAYING && userTeam && opponentTeam) {
       if (isP2P) {
-          // P2P Mode: Just check counts, don't run AI
           getMatchingPlayers(userTeam.name, opponentTeam.name).then(matches => {
               setPossibleAnswersCount(matches.length);
               if (matches.length === 0) {
@@ -218,19 +210,18 @@ const GamePage: React.FC = () => {
     };
   }, [gameState]);
 
-  // Scroll to bottom of chat
+  // Scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Physical Keyboard Listener
+  // Keyboard Listener
   useEffect(() => {
     if (gameState !== GameState.PLAYING) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-        // Allow browser hotkeys
         if (e.ctrlKey || e.metaKey || e.altKey) return;
 
         if (e.key === 'Enter') {
@@ -252,7 +243,6 @@ const GamePage: React.FC = () => {
   // ---- Interaction Logic ----
 
   const handleTeamInteraction = (team: Team) => {
-    // Only Host can select in P2P selection phase
     if (isP2P && !p2pManager.isHost) return;
     if (userTeam) return;
 
@@ -268,11 +258,8 @@ const GamePage: React.FC = () => {
     setFocusedTeamId(team.id); 
     
     if (isP2P && p2pManager.isHost) {
-        // Generate random opponent team if not set
         const oppTeam = opponentTeam || availableTeams[Math.floor(Math.random() * availableTeams.length)];
         setOpponentTeam(oppTeam);
-
-        // Send to guest
         p2pManager.send('TEAM_SELECT', { 
             team1Id: team.id,
             team2Id: oppTeam.id
@@ -327,7 +314,6 @@ const GamePage: React.FC = () => {
         return;
     }
 
-    // AI Logic only in Single Player
     const answers = await getAIAnswers(team1, team2);
     aiPotentialAnswers.current = answers;
 
@@ -347,6 +333,9 @@ const GamePage: React.FC = () => {
     let history: string[] | undefined = [];
 
     if (userTeam && opponentTeam) {
+        // Save Loss
+        storageService.saveMatch('LOSS', 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
+        
         try {
             const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
             if (verifyResult.isValid && verifyResult.history) {
@@ -370,10 +359,14 @@ const GamePage: React.FC = () => {
   const handleSurrender = async () => {
     if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
     
-    // In P2P, surrender gives point to opponent
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
-    
     setMessages(prev => [...prev, { text: "> ROUND SURRENDERED.", isError: true }]);
+    
+    // Save Loss
+    if (userTeam && opponentTeam) {
+       storageService.saveMatch('LOSS', isP2P ? p2pManager.opponentName : 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
+    }
+
     setGameState(GameState.ROUND_END);
   };
 
@@ -384,11 +377,9 @@ const GamePage: React.FC = () => {
     isUserValidating.current = true;
     const rawInput = inputValue.trim();
     setInputValue('');
-    const inputClean = rawInput.toLowerCase();
     
     setMessages(prev => [...prev, { text: `> Analyzing: ${rawInput}...` }]);
 
-    // In P2P, we rely purely on Local DB for fairness, AI fallback is disabled for speed/sync
     const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
     isUserValidating.current = false;
 
@@ -396,7 +387,6 @@ const GamePage: React.FC = () => {
       const displayName = result.correctedName || rawInput;
       handleSuccess(displayName, result.source || 'DB', result.history);
       
-      // Notify Opponent
       if (isP2P) {
           p2pManager.send('SCORE_UPDATE', {
               answer: displayName,
@@ -406,7 +396,6 @@ const GamePage: React.FC = () => {
 
     } else {
       setMessages(prev => [...prev, { text: `> REJECTED: ${rawInput} is not valid.`, isError: true }]);
-      // In Single player, this might trigger AI win if race condition
       if (!isP2P && aiPendingWin.current) {
           handleAIWin(aiPendingWin.current);
           aiPendingWin.current = null;
@@ -420,6 +409,8 @@ const GamePage: React.FC = () => {
         if (history) {
             sortedHistory = sortHistory(history);
         }
+        // Save Win
+        storageService.saveMatch('WIN', isP2P ? p2pManager.opponentName : 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
     }
 
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
@@ -444,7 +435,6 @@ const GamePage: React.FC = () => {
     setTeamFilter('');
     setGameState(GameState.SELECTION);
     
-    // In P2P, host doesn't auto-pick here, waits for user interaction
     if (!isP2P && availableTeams.length > 0) {
        setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
     }
@@ -457,19 +447,12 @@ const GamePage: React.FC = () => {
 
   const formatTime = (seconds: number) => `00:${seconds < 10 ? '0' : ''}${seconds}`;
 
-  // Virtual Keyboard Handlers
-  const handleVirtualChar = (char: string) => {
-    setInputValue(prev => prev + char);
-  };
-  const handleVirtualDelete = () => {
-    setInputValue(prev => prev.slice(0, -1));
-  };
-  const handleVirtualEnter = () => {
-    handleUserSubmit();
-  };
+  const handleVirtualChar = (char: string) => setInputValue(prev => prev + char);
+  const handleVirtualDelete = () => setInputValue(prev => prev.slice(0, -1));
+  const handleVirtualEnter = () => handleUserSubmit();
 
   return (
-    <div className="min-h-screen flex flex-col max-w-2xl mx-auto bg-[#000022] font-mono text-white relative shadow-2xl overflow-hidden border-x-4 border-gray-800">
+    <div className="min-h-screen flex flex-col max-w-2xl mx-auto bg-[#0F1419] font-mono text-white relative shadow-2xl overflow-hidden border-x-4 border-gray-800">
       
       {/* --- STICKY HUD --- */}
       <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl">
