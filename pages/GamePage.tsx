@@ -52,8 +52,13 @@ const GamePage: React.FC = () => {
   const [focusedTeamId, setFocusedTeamId] = useState<string | null>(null); // Visual focus
   const [userTeam, setUserTeam] = useState<Team | null>(null); // Confirmed selection
   
-  const [opponentTeam, setOpponentTeam] = useState<Team | null>(null);
-  const [timeLeft, setTimeLeft] = useState(30);
+  // Opponent State
+  const [opponentTeam, setOpponentTeam] = useState<Team | null>(null); // Visible opponent team
+  const [opponentSecretTeam, setOpponentSecretTeam] = useState<Team | null>(null); // P2P hidden choice
+  const [isOpponentReady, setIsOpponentReady] = useState(false);
+
+  const [timeLeft, setTimeLeft] = useState(30); // Selection Timer
+  const [roundTimeLeft, setRoundTimeLeft] = useState(60); // Round Timer
   const [inputValue, setInputValue] = useState('');
   
   // Data State
@@ -69,6 +74,7 @@ const GamePage: React.FC = () => {
   // Refs
   const aiPotentialAnswers = useRef<string[]>([]);
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roundTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   // Refs for race condition handling
@@ -82,24 +88,17 @@ const GamePage: React.FC = () => {
     // Listen for P2P messages
     const removeListener = p2pManager.onMessage((msg) => {
         if (msg.type === 'TEAM_SELECT') {
-            // Host sent the teams
-            const { team1Id, team2Id } = msg.payload;
-            const t1 = availableTeams.find(t => t.id === team1Id);
-            const t2 = availableTeams.find(t => t.id === team2Id);
+            // Opponent has selected a team
+            const { teamId } = msg.payload;
+            const selected = availableTeams.find(t => t.id === teamId);
             
-            if (t1 && t2) {
-                // If I am guest, I receive the selection. 
-                setUserTeam(t1);
-                setOpponentTeam(t2);
+            if (selected) {
+                setOpponentSecretTeam(selected);
+                setIsOpponentReady(true);
                 
-                // Trigger reveal on guest side
-                setGameState(GameState.REVEAL);
-                setTimeout(() => {
-                   setGameState(GameState.PLAYING);
-                   getMatchingPlayers(t1.name, t2.name).then(matches => {
-                       setPossibleAnswersCount(matches.length);
-                   });
-                }, 4000); 
+                // If I have already selected, trigger reveal immediately
+                // Using a ref or checking state in effect is tricky due to closure
+                // We rely on a separate useEffect to monitor both states
             }
         } 
         else if (msg.type === 'SCORE_UPDATE') {
@@ -120,10 +119,24 @@ const GamePage: React.FC = () => {
 
             setGameState(GameState.ROUND_END);
         }
+        else if (msg.type === 'ROUND_TIMEOUT') {
+             handleDraw("TIME UP!");
+        }
     });
 
     return () => removeListener();
   }, [isP2P, availableTeams, userTeam, opponentTeam]);
+
+  // Sync Effect: Check if both players are ready to reveal
+  useEffect(() => {
+    if (isP2P && gameState === GameState.SELECTION) {
+        if (userTeam && isOpponentReady && opponentSecretTeam) {
+            setOpponentTeam(opponentSecretTeam); // Now we can show it
+            startReveal();
+        }
+    }
+  }, [isP2P, gameState, userTeam, isOpponentReady, opponentSecretTeam]);
+
 
   // Load DB and extract all teams
   useEffect(() => {
@@ -161,25 +174,63 @@ const GamePage: React.FC = () => {
     }).catch(e => console.error("Failed to preload DB", e));
   }, []);
 
-  // Timer Effect (Only Host controls Selection timer logic effectively, or local)
+  // Selection Timer (30s) - Only Host or Single Player
   useEffect(() => {
     if (gameState === GameState.SELECTION && timeLeft > 0) {
       const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
       return () => clearInterval(timer);
     } else if (gameState === GameState.SELECTION && timeLeft === 0) {
-      if (!isP2P || p2pManager.isHost) {
+      if (!userTeam) {
           handleAutoSelect();
       }
     }
-  }, [gameState, timeLeft, isP2P]);
+  }, [gameState, timeLeft, userTeam]);
 
-  // AI Selection & Setup Effect
+  // Round Timer (60s) - Active during PLAYING phase
   useEffect(() => {
-    if (gameState === GameState.SELECTION && availableTeams.length > 0) {
+      // Clear any existing timer when not playing
+      if (gameState !== GameState.PLAYING) {
+          if (roundTimerRef.current) clearInterval(roundTimerRef.current);
+          return;
+      }
+
+      // Initialize round timer
+      setRoundTimeLeft(60);
+
+      // Only Host (or single player) manages the authoritative timer
       if (!isP2P || p2pManager.isHost) {
+          roundTimerRef.current = setInterval(() => {
+              setRoundTimeLeft(prev => {
+                  if (prev <= 1) {
+                      if (roundTimerRef.current) clearInterval(roundTimerRef.current);
+                      // Trigger Draw
+                      if (isP2P) {
+                          p2pManager.send('ROUND_TIMEOUT', {});
+                      }
+                      handleDraw("TIME UP!");
+                      return 0;
+                  }
+                  return prev - 1;
+              });
+          }, 1000);
+      } else {
+          // Client side just visually decrements, sync is loose but handled by receiving ROUND_TIMEOUT message from host
+           roundTimerRef.current = setInterval(() => {
+              setRoundTimeLeft(prev => Math.max(0, prev - 1));
+           }, 1000);
+      }
+
+      return () => {
+          if (roundTimerRef.current) clearInterval(roundTimerRef.current);
+      };
+  }, [gameState, isP2P]);
+
+
+  // AI Selection & Setup Effect (Only for Single Player)
+  useEffect(() => {
+    if (!isP2P && gameState === GameState.SELECTION && availableTeams.length > 0 && !opponentTeam) {
           const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
           setOpponentTeam(randomTeam);
-      }
     }
   }, [gameState, availableTeams, isP2P]);
 
@@ -243,8 +294,7 @@ const GamePage: React.FC = () => {
   // ---- Interaction Logic ----
 
   const handleTeamInteraction = (team: Team) => {
-    if (isP2P && !p2pManager.isHost) return;
-    if (userTeam) return;
+    if (userTeam) return; // Locked
 
     if (focusedTeamId === team.id) {
         confirmSelection(team);
@@ -257,16 +307,16 @@ const GamePage: React.FC = () => {
     setUserTeam(team);
     setFocusedTeamId(team.id); 
     
-    if (isP2P && p2pManager.isHost) {
-        const oppTeam = opponentTeam || availableTeams[Math.floor(Math.random() * availableTeams.length)];
-        setOpponentTeam(oppTeam);
+    if (isP2P) {
+        // In P2P, we just send our choice and wait.
         p2pManager.send('TEAM_SELECT', { 
-            team1Id: team.id,
-            team2Id: oppTeam.id
+            teamId: team.id
         });
+        // Transition to reveal handles in the useEffect when both are ready
+    } else {
+        // Single Player: Opponent is already set by AI logic
+        setTimeout(() => startReveal(), 600);
     }
-
-    setTimeout(() => startReveal(), 600);
   };
 
   const handleRandomSelect = () => {
@@ -327,6 +377,13 @@ const GamePage: React.FC = () => {
         }
       }, thinkTime);
     }
+  };
+
+  const handleDraw = (reason: string = "DRAW") => {
+      if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
+      setMessages(prev => [...prev, { text: `> ${reason}`, isError: true }]);
+      // No score updates for draw
+      setGameState(GameState.ROUND_END);
   };
 
   const handleAIWin = async (answer: string) => {
@@ -428,15 +485,22 @@ const GamePage: React.FC = () => {
 
   const nextRound = () => {
     setUserTeam(null);
+    setOpponentSecretTeam(null);
+    setIsOpponentReady(false);
     setFocusedTeamId(null);
     setMessages([]);
     setPossibleAnswersCount(null);
     setTimeLeft(30);
+    setRoundTimeLeft(60);
     setTeamFilter('');
     setGameState(GameState.SELECTION);
     
     if (!isP2P && availableTeams.length > 0) {
+       // Pre-select new AI opponent for next round
        setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
+    } else {
+       // In P2P, reset opponent visible team until they pick again
+       setOpponentTeam(null);
     }
   };
 
@@ -479,7 +543,7 @@ const GamePage: React.FC = () => {
                     </div>
                  ) : (
                     <span className="font-pixel text-sm text-gray-500 animate-pulse">
-                        {isP2P && !p2pManager.isHost ? 'WAITING FOR HOST...' : 'SELECT TEAM...'}
+                        SELECT TEAM...
                     </span>
                  )}
              </div>
@@ -489,6 +553,10 @@ const GamePage: React.FC = () => {
                  {gameState === GameState.SELECTION ? (
                     <div className="text-3xl font-pixel text-yellow-400 tabular-nums drop-shadow-md">
                         {formatTime(timeLeft)}
+                    </div>
+                 ) : gameState === GameState.PLAYING ? (
+                    <div className="text-3xl font-pixel text-red-500 tabular-nums drop-shadow-md animate-pulse">
+                        {formatTime(roundTimeLeft)}
                     </div>
                  ) : (
                     <div className="text-2xl font-pixel text-gray-600 font-bold opacity-50">VS</div>
@@ -507,20 +575,31 @@ const GamePage: React.FC = () => {
                  </div>
 
                  <div className="flex items-center gap-3 w-full justify-end">
-                      {opponentTeam ? (
+                      {/* P2P: Show Ready Status or Hidden Team */}
+                      {isP2P && gameState === GameState.SELECTION ? (
+                          isOpponentReady ? (
+                              <div className="flex flex-col items-end">
+                                  <span className="bg-green-600 text-white text-[10px] font-pixel px-2 py-1 mb-1 animate-pulse border border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]">
+                                      READY
+                                  </span>
+                                  <div className="flex items-center gap-2 opacity-50 grayscale">
+                                      <span className="font-pixel text-sm text-gray-400">HIDDEN</span>
+                                      <div className="h-10 w-10 border-2 border-gray-600 bg-gray-800 flex items-center justify-center text-gray-500">?</div>
+                                  </div>
+                              </div>
+                          ) : (
+                              <span className="font-pixel text-[10px] text-gray-500 animate-pulse">
+                                  SELECTING...
+                              </span>
+                          )
+                      ) : opponentTeam ? (
+                         // Regular display (AI or P2P Playing/Reveal)
                          <>
                             <span className="font-pixel text-base sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] text-right uppercase whitespace-nowrap truncate min-w-0">
-                                {gameState === GameState.SELECTION ? '???' : opponentTeam.name}
+                                {opponentTeam.name}
                             </span>
-                            <div className={`h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] flex items-center justify-center overflow-hidden ${gameState === GameState.SELECTION ? 'bg-black' : ''}`}
-                                 style={gameState !== GameState.SELECTION ? { background: `linear-gradient(135deg, ${opponentTeam.colors[0]} 50%, ${opponentTeam.colors[1]} 50%)` } : {}}>
-                                 {gameState === GameState.SELECTION && (
-                                     <div className="flex gap-1 items-center">
-                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></div>
-                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></div>
-                                         <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></div>
-                                     </div>
-                                 )}
+                            <div className="h-12 w-12 sm:h-14 sm:w-14 border-4 border-white shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] flex items-center justify-center overflow-hidden"
+                                 style={{ background: `linear-gradient(135deg, ${opponentTeam.colors[0]} 50%, ${opponentTeam.colors[1]} 50%)` }}>
                             </div>
                          </>
                       ) : (
@@ -531,11 +610,13 @@ const GamePage: React.FC = () => {
          </div>
 
          {/* Timer Progress Bar */}
-         {gameState === GameState.SELECTION && (
+         {(gameState === GameState.SELECTION || gameState === GameState.PLAYING) && (
              <div className="w-full h-2 bg-gray-900 border-t border-gray-700 relative">
                  <div 
-                    className="h-full bg-gradient-to-r from-green-500 via-yellow-400 to-red-500 transition-all duration-1000 ease-linear"
-                    style={{ width: `${(timeLeft / 30) * 100}%` }}
+                    className={`h-full transition-all duration-1000 ease-linear ${gameState === GameState.PLAYING ? 'bg-red-600' : 'bg-gradient-to-r from-green-500 via-yellow-400 to-red-500'}`}
+                    style={{ 
+                        width: `${gameState === GameState.PLAYING ? (roundTimeLeft/60)*100 : (timeLeft/30)*100}%` 
+                    }}
                  />
              </div>
          )}
@@ -543,51 +624,35 @@ const GamePage: React.FC = () => {
 
       {/* --- PHASE: SELECTION --- */}
       {gameState === GameState.SELECTION && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#0A0A1A]">
+        <div className="flex-1 flex flex-col overflow-hidden bg-[#0A0A1A] relative">
+          
           {/* Controls Bar */}
           <div className="p-3 gap-2 flex flex-col sm:flex-row border-b border-gray-800 shrink-0">
-             {(!isP2P || p2pManager.isHost) ? (
-                 <>
-                    <div className="flex gap-2 w-full">
-                        <Button 
-                            variant="secondary" 
-                            className="px-3" 
-                            onClick={() => {
-                                if (isP2P) p2pManager.destroy();
-                                navigate('/');
-                            }}
-                        >
-                        «
-                        </Button>
-                        <input 
-                            type="text"
-                            placeholder="FIND CLUB..."
-                            value={teamFilter}
-                            onChange={(e) => setTeamFilter(e.target.value)}
-                            className="flex-1 bg-black border-2 border-gray-600 text-green-400 px-3 py-3 font-pixel text-[10px] uppercase focus:outline-none focus:border-green-400 placeholder-gray-700"
-                        />
-                        <Button variant="secondary" className="px-4 py-0 text-[10px]" onClick={handleRandomSelect}>
-                        RND
-                        </Button>
-                    </div>
-                    <p className="text-[9px] text-gray-500 text-center sm:text-left mt-1 sm:mt-0 font-pixel self-center">
-                        TAP TO HIGHLIGHT • TAP AGAIN TO LOCK
-                    </p>
-                 </>
-             ) : (
-                 <div className="w-full text-center py-4 relative">
-                     <button 
-                        onClick={() => {
-                            if (isP2P) p2pManager.destroy();
-                            navigate('/');
-                        }}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white px-2"
-                     >
-                        «
-                     </button>
-                     <p className="text-yellow-400 font-pixel text-sm animate-pulse inline-block">WAITING FOR HOST TO SELECT...</p>
-                 </div>
-             )}
+             <div className="flex gap-2 w-full">
+                <Button 
+                    variant="secondary" 
+                    className="px-3" 
+                    onClick={() => {
+                        if (isP2P) p2pManager.destroy();
+                        navigate('/');
+                    }}
+                >
+                «
+                </Button>
+                <input 
+                    type="text"
+                    placeholder="FIND CLUB..."
+                    value={teamFilter}
+                    onChange={(e) => setTeamFilter(e.target.value)}
+                    className="flex-1 bg-black border-2 border-gray-600 text-green-400 px-3 py-3 font-pixel text-[10px] uppercase focus:outline-none focus:border-green-400 placeholder-gray-700"
+                />
+                <Button variant="secondary" className="px-4 py-0 text-[10px]" onClick={handleRandomSelect}>
+                RND
+                </Button>
+            </div>
+            <p className="text-[9px] text-gray-500 text-center sm:text-left mt-1 sm:mt-0 font-pixel self-center">
+                TAP TO HIGHLIGHT • TAP AGAIN TO LOCK
+            </p>
           </div>
 
           {/* Grid Area */}
@@ -629,7 +694,7 @@ const GamePage: React.FC = () => {
                 <Button 
                     fullWidth 
                     onClick={() => focusedTeamId && confirmSelection(availableTeams.find(t => t.id === focusedTeamId)!)} 
-                    disabled={!focusedTeamId || !!userTeam || (isP2P && !p2pManager.isHost)}
+                    disabled={!focusedTeamId || !!userTeam}
                     variant={userTeam ? "ghost" : "primary"}
                     className={userTeam ? "opacity-0" : "opacity-100 shadow-xl"}
                 >

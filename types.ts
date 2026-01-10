@@ -31,7 +31,8 @@ export type P2PMessageType =
   | 'START_GAME' 
   | 'SCORE_UPDATE' 
   | 'GAME_OVER'
-  | 'REMATCH';
+  | 'REMATCH'
+  | 'ROUND_TIMEOUT';
 
 export interface P2PMessage {
   type: P2PMessageType;
