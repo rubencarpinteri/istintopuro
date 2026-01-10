@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [showCpuOptions, setShowCpuOptions] = useState(false);
 
   return (
     <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col justify-center relative z-10">
@@ -22,23 +23,49 @@ const HomePage: React.FC = () => {
       {/* Main Actions */}
       <main className="flex-1 flex flex-col gap-6">
         <div className="space-y-4 px-4">
-            <Button 
-              fullWidth 
-              onClick={() => navigate('/game?mode=ai')} 
-              className="text-sm btn-retro-pulse"
-            >
-              1P VS CPU
-            </Button>
+            {showCpuOptions ? (
+              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-300 bg-black/40 p-4 rounded border border-gray-700">
+                <div className="text-center font-pixel text-xs text-yellow-400 mb-2">SELECT MATCH LENGTH</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[3, 5, 10].map(rounds => (
+                    <Button 
+                      key={rounds}
+                      onClick={() => navigate(`/game?mode=ai&bestOf=${rounds}`)}
+                      className="text-[10px] py-3 bg-blue-900 border-slate-400 hover:bg-blue-800 hover:border-slate-200 text-white shadow-[4px_4px_0px_0px_#000]"
+                      variant="primary"
+                    >
+                      BO{rounds}
+                    </Button>
+                  ))}
+                </div>
+                <Button 
+                    fullWidth 
+                    variant="ghost" 
+                    onClick={() => setShowCpuOptions(false)}
+                    className="text-[10px] py-2 text-gray-400 hover:text-white mt-2"
+                >
+                    CANCEL
+                </Button>
+              </div>
+            ) : (
+                <Button 
+                  fullWidth 
+                  onClick={() => setShowCpuOptions(true)} 
+                  className="text-base"
+                >
+                  1P VS CPU
+                </Button>
+            )}
+
             <Button 
               fullWidth 
               onClick={() => navigate('/lobby')} 
               variant="primary" 
-              className="text-sm bg-purple-700 hover:bg-purple-600 border-purple-300 btn-retro-pulse"
-              style={{ animationDelay: '1s' }}
+              className="text-base bg-purple-700 hover:bg-purple-600 border-purple-300"
             >
               2P VS FRIEND
             </Button>
-            <Button fullWidth onClick={() => navigate('/profile')} variant="secondary" className="text-sm border-gray-400">
+            <Button fullWidth onClick={() => navigate('/profile')} variant="secondary" className="text-base border-gray-400">
               MEMORY CARD (STATS)
             </Button>
         </div>

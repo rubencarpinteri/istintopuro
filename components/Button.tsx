@@ -12,12 +12,13 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = "px-4 py-3 font-pixel text-xs uppercase tracking-widest transition-none transform active:translate-y-1 active:shadow-none border-2 disabled:opacity-50 disabled:cursor-not-allowed";
+  // Bigger, chunkier, retro buttons with 8px hard shadow
+  const baseStyles = "px-6 py-4 font-pixel text-sm uppercase tracking-widest transition-none transform active:translate-y-2 active:shadow-none border-4 disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variants = {
-    primary: "bg-blue-700 text-white border-white shadow-[4px_4px_0px_0px_#000] hover:bg-blue-600",
-    secondary: "bg-gray-200 text-black border-black shadow-[4px_4px_0px_0px_#000] hover:bg-white",
-    danger: "bg-red-600 text-white border-white shadow-[4px_4px_0px_0px_#000] hover:bg-red-500",
+    primary: "bg-blue-700 text-white border-white shadow-[8px_8px_0px_0px_#000] hover:bg-blue-600",
+    secondary: "bg-gray-200 text-black border-black shadow-[8px_8px_0px_0px_#000] hover:bg-white",
+    danger: "bg-red-600 text-white border-white shadow-[8px_8px_0px_0px_#000] hover:bg-red-500",
     ghost: "bg-transparent text-gray-300 hover:text-white border-transparent hover:border-gray-500 hover:bg-gray-800"
   };
 

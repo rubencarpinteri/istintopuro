@@ -238,11 +238,12 @@ const GamePage: React.FC = () => {
 
   // AI Selection & Setup Effect (Only for Single Player)
   useEffect(() => {
-    if (!isP2P && gameState === GameState.SELECTION && availableTeams.length > 0 && !opponentTeam) {
+    if (!isP2P && gameState === GameState.SELECTION && availableTeams.length > 0 && !opponentSecretTeam) {
           const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
-          setOpponentTeam(randomTeam);
+          setOpponentSecretTeam(randomTeam);
+          setIsOpponentReady(true);
     }
-  }, [gameState, availableTeams, isP2P]);
+  }, [gameState, availableTeams, isP2P, opponentSecretTeam]);
 
   // Game Start Effect
   useEffect(() => {
@@ -320,6 +321,10 @@ const GamePage: React.FC = () => {
     if (isP2P) {
         p2pManager.send('TEAM_SELECT', { teamId: team.id });
     } else {
+        // AI Mode: reveal opponent selection just before starting reveal phase
+        if (opponentSecretTeam) {
+            setOpponentTeam(opponentSecretTeam);
+        }
         setTimeout(() => startReveal(), 600);
     }
   };
@@ -484,12 +489,7 @@ const GamePage: React.FC = () => {
     setRoundTimeLeft(60);
     setTeamFilter('');
     setGameState(GameState.SELECTION);
-    
-    if (!isP2P && availableTeams.length > 0) {
-       setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
-    } else {
-       setOpponentTeam(null);
-    }
+    setOpponentTeam(null);
   };
 
   const filteredTeams = useMemo(() => {
@@ -564,10 +564,10 @@ const GamePage: React.FC = () => {
       {/* --- STICKY HUD --- */}
       <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl">
          {/* Rounds Indicator */}
-         <div className="absolute top-0 left-0 right-0 flex justify-center -mt-1">
-            <div className="bg-black/80 px-3 py-1 rounded-b-lg border border-white/10 text-[9px] font-pixel text-yellow-400">
-                FIRST TO {targetWins} WINS
-            </div>
+         <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none">
+             <div className="bg-black/80 px-3 py-1 rounded-full border border-white/10 text-[9px] font-pixel text-yellow-400 shadow-md">
+                 FIRST TO {targetWins} WINS
+             </div>
          </div>
 
          <div className="grid grid-cols-[1fr_auto_1fr] items-center p-3 pt-5 min-h-[100px] sm:min-h-[120px]">
@@ -602,7 +602,7 @@ const GamePage: React.FC = () => {
              </div>
 
              {/* CENTER STATUS */}
-             <div className="flex flex-col items-center justify-center px-2">
+             <div className="flex flex-col items-center justify-center px-2 pt-2">
                  {gameState === GameState.SELECTION ? (
                     <div className="text-3xl font-pixel text-yellow-400 tabular-nums drop-shadow-md">
                         {formatTime(timeLeft)}
@@ -630,11 +630,11 @@ const GamePage: React.FC = () => {
                  </div>
 
                  <div className="flex items-center gap-3 w-full justify-end">
-                      {isP2P && gameState === GameState.SELECTION ? (
+                      {(isP2P || !opponentTeam) && gameState === GameState.SELECTION ? (
                           isOpponentReady ? (
                               <div className="flex flex-col items-end">
-                                  <span className="bg-green-600 text-white text-[10px] font-pixel px-2 py-1 mb-1 animate-pulse border border-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]">
-                                      READY
+                                  <span className={`text-white text-[10px] font-pixel px-2 py-1 mb-1 animate-pulse border shadow-[0_0_10px_rgba(74,222,128,0.5)] ${isP2P ? 'bg-green-600 border-green-400' : 'bg-red-600 border-red-400'}`}>
+                                      {isP2P ? 'READY' : 'CPU READY'}
                                   </span>
                                   <div className="flex items-center gap-2 opacity-50 grayscale">
                                       <span className="font-pixel text-sm text-gray-400">HIDDEN</span>
@@ -643,7 +643,7 @@ const GamePage: React.FC = () => {
                               </div>
                           ) : (
                               <span className="font-pixel text-[10px] text-gray-500 animate-pulse">
-                                  SELECTING...
+                                  {isP2P ? 'SELECTING...' : 'CPU THINKING...'}
                               </span>
                           )
                       ) : opponentTeam ? (
@@ -666,7 +666,7 @@ const GamePage: React.FC = () => {
          {(gameState === GameState.SELECTION || gameState === GameState.PLAYING) && (
              <div className="w-full h-2 bg-gray-900 border-t border-gray-700 relative">
                  <div 
-                    className={`h-full transition-all duration-1000 ease-linear ${gameState === GameState.PLAYING ? 'bg-red-600' : 'bg-gradient-to-r from-green-500 via-yellow-400 to-red-500'}`}
+                    className="h-full transition-all duration-1000 ease-linear bg-gradient-to-r from-green-500 via-yellow-400 to-red-500"
                     style={{ 
                         width: `${gameState === GameState.PLAYING ? (roundTimeLeft/60)*100 : (timeLeft/30)*100}%` 
                     }}
@@ -769,7 +769,7 @@ const GamePage: React.FC = () => {
                 <div className="w-20 h-20 sm:w-24 sm:h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                     <div className="w-16 h-16 sm:w-20 sm:h-20" style={{ background: `linear-gradient(135deg, ${userTeam?.colors[0]} 50%, ${userTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 border border-gray-700 truncate w-full text-center">{userTeam?.name}</p>
+                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 truncate w-full text-center">{userTeam?.name}</p>
              </div>
              
              <div className="text-4xl font-pixel text-white">&</div>
@@ -778,7 +778,7 @@ const GamePage: React.FC = () => {
                 <div className="w-20 h-20 sm:w-24 sm:h-24 mb-4 border-4 border-white mx-auto bg-gray-800 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                     <div className="w-16 h-16 sm:w-20 sm:h-20" style={{ background: `linear-gradient(135deg, ${opponentTeam?.colors[0]} 50%, ${opponentTeam?.colors[1]} 50%)` }}></div>
                 </div>
-                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 border border-gray-700 truncate w-full text-center">{opponentTeam?.name}</p>
+                <p className="font-pixel text-lg sm:text-xl text-white bg-black px-2 py-1 truncate w-full text-center">{opponentTeam?.name}</p>
              </div>
           </div>
         </div>
