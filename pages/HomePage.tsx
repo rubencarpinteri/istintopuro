@@ -25,8 +25,8 @@ const HomePage: React.FC = () => {
             <Button fullWidth onClick={() => navigate('/game?mode=ai')} className="text-sm">
               1P VS CPU
             </Button>
-            <Button fullWidth variant="secondary" disabled title="Coming soon">
-              2P VS PLAYER
+            <Button fullWidth onClick={() => navigate('/lobby')} variant="primary" className="text-sm bg-purple-700 hover:bg-purple-600 border-purple-300">
+              2P VS FRIEND
             </Button>
         </div>
       </main>

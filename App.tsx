@@ -3,11 +3,10 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import HomePage from './pages/HomePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-// Lazy load components that use the massive localDb.ts
-// This ensures the huge JSON data is only downloaded when the user goes to these pages,
-// keeping the Homepage instant.
+// Lazy load components
 const GamePage = React.lazy(() => import('./pages/GamePage'));
 const DataConverter = React.lazy(() => import('./pages/DataConverter'));
+const LobbyPage = React.lazy(() => import('./pages/LobbyPage'));
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] text-white">
@@ -32,6 +31,7 @@ const App: React.FC = () => {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/game" element={<GamePage />} />
+              <Route path="/lobby" element={<LobbyPage />} />
               {/* Secret route to process your CSVs */}
               <Route path="/convert" element={<DataConverter />} />
               <Route path="*" element={<Navigate to="/" />} />

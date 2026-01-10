@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { TeamCard } from '../components/TeamCard';
+import { VirtualKeyboard } from '../components/VirtualKeyboard';
 import { TEAMS } from '../constants';
 import { GameState, Team } from '../types';
 import { getAIAnswers } from '../services/geminiService';
 import { verifyAnswer, getMatchingPlayers } from '../services/verificationService';
+import { p2pManager } from '../services/p2pService';
 
 // Color generator for teams not in constants (fallback)
 const generateColor = (str: string) => {
@@ -40,6 +42,9 @@ interface GameMessage {
 
 const GamePage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isP2P = searchParams.get('mode') === 'p2p';
+
   const [gameState, setGameState] = useState<GameState>(GameState.SELECTION);
   
   // Selection State
@@ -63,12 +68,69 @@ const GamePage: React.FC = () => {
   // Refs
   const aiPotentialAnswers = useRef<string[]>([]);
   const gameLoopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   // Refs for race condition handling
   const isUserValidating = useRef(false);
   const aiPendingWin = useRef<string | null>(null);
+
+  // P2P Listeners
+  useEffect(() => {
+    if (!isP2P) return;
+
+    // Listen for P2P messages
+    const removeListener = p2pManager.onMessage((msg) => {
+        if (msg.type === 'TEAM_SELECT') {
+            // Host sent the teams
+            const { team1Id, team2Id } = msg.payload;
+            const t1 = availableTeams.find(t => t.id === team1Id);
+            const t2 = availableTeams.find(t => t.id === team2Id);
+            
+            if (t1 && t2) {
+                // If I am guest, I receive the selection. 
+                // Host selected t1, so that's "their" team (opponent for me), but in this game
+                // we share the challenge. So I just set them for visual.
+                // Wait, logic:
+                // User selects TEAM A. Opponent gets assigned TEAM B.
+                // In P2P, Host selects TEAM A. 
+                // Then Host machine randomizes TEAM B.
+                // Host sends { team1: A, team2: B } to Guest.
+                setUserTeam(t1);
+                setOpponentTeam(t2);
+                
+                // Trigger reveal on guest side
+                setGameState(GameState.REVEAL);
+                setTimeout(() => {
+                   setGameState(GameState.PLAYING);
+                   // Guest doesn't need to check AI answers, but needs validation DB.
+                   // Validation DB is loaded in effect.
+                   getMatchingPlayers(t1.name, t2.name).then(matches => {
+                       setPossibleAnswersCount(matches.length);
+                   });
+                }, 4000); // 1s delay + 3s reveal
+            }
+        } 
+        else if (msg.type === 'SCORE_UPDATE') {
+            // Opponent scored!
+            const { answer, history } = msg.payload;
+            setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
+            setMessages(prev => [...prev, { 
+                prefix: `> ${p2pManager.opponentName} found: `,
+                highlight: answer.toUpperCase(),
+                isCpuWin: true, // Reusing style for opponent
+                history: history
+            }]);
+            
+            // In P2P "Race", the round continues until time up or someone quits?
+            // Or "First to find X"?
+            // Let's stick to standard round reset for simplicity:
+            // Whoever finds first, wins round.
+            setGameState(GameState.ROUND_END);
+        }
+    });
+
+    return () => removeListener();
+  }, [isP2P, availableTeams]);
 
   // Load DB and extract all teams
   useEffect(() => {
@@ -106,23 +168,27 @@ const GamePage: React.FC = () => {
     }).catch(e => console.error("Failed to preload DB", e));
   }, []);
 
-  // Timer Effect
+  // Timer Effect (Only Host controls Selection timer logic effectively, or local)
   useEffect(() => {
     if (gameState === GameState.SELECTION && timeLeft > 0) {
       const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
       return () => clearInterval(timer);
     } else if (gameState === GameState.SELECTION && timeLeft === 0) {
-      handleAutoSelect();
+      if (!isP2P || p2pManager.isHost) {
+          handleAutoSelect();
+      }
     }
-  }, [gameState, timeLeft]);
+  }, [gameState, timeLeft, isP2P]);
 
-  // AI Selection & Setup Effect
+  // AI Selection & Setup Effect (Only run if single player OR Host)
   useEffect(() => {
     if (gameState === GameState.SELECTION && availableTeams.length > 0) {
-      const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
-      setOpponentTeam(randomTeam);
+      if (!isP2P || p2pManager.isHost) {
+          const randomTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
+          setOpponentTeam(randomTeam);
+      }
     }
-  }, [gameState, availableTeams]);
+  }, [gameState, availableTeams, isP2P]);
 
   // Game Start Effect
   useEffect(() => {
@@ -133,8 +199,19 @@ const GamePage: React.FC = () => {
     }
 
     if (gameState === GameState.PLAYING && userTeam && opponentTeam) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-      checkPossibilitiesAndStart(userTeam.name, opponentTeam.name);
+      if (isP2P) {
+          // P2P Mode: Just check counts, don't run AI
+          getMatchingPlayers(userTeam.name, opponentTeam.name).then(matches => {
+              setPossibleAnswersCount(matches.length);
+              if (matches.length === 0) {
+                   setMessages([{ text: `NO MATCHES FOUND. SKIP.`, isError: true }]);
+                   setTimeout(nextRound, 2000);
+              }
+          });
+      } else {
+          // AI Mode
+          checkPossibilitiesAndStart(userTeam.name, opponentTeam.name);
+      }
     }
     return () => {
       if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
@@ -148,42 +225,73 @@ const GamePage: React.FC = () => {
     }
   }, [messages]);
 
+  // Physical Keyboard Listener
+  useEffect(() => {
+    if (gameState !== GameState.PLAYING) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Allow browser hotkeys
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleUserSubmit();
+        } else if (e.key === 'Backspace') {
+            e.preventDefault();
+            setInputValue(prev => prev.slice(0, -1));
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+            e.preventDefault();
+            setInputValue(prev => prev + e.key.toUpperCase());
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameState, inputValue, userTeam, opponentTeam]);
+
   // ---- Interaction Logic ----
 
   const handleTeamInteraction = (team: Team) => {
-    // If already locked, do nothing
+    // Only Host can select in P2P selection phase
+    if (isP2P && !p2pManager.isHost) return;
     if (userTeam) return;
 
     if (focusedTeamId === team.id) {
-        // Second tap on same team -> Confirm
         confirmSelection(team);
     } else {
-        // First tap -> Focus
         setFocusedTeamId(team.id);
     }
   };
 
   const confirmSelection = (team: Team) => {
     setUserTeam(team);
-    setFocusedTeamId(team.id); // Ensure focus stays on locked team
-    // Slight delay before reveal for visual impact
+    setFocusedTeamId(team.id); 
+    
+    if (isP2P && p2pManager.isHost) {
+        // Generate random opponent team if not set
+        const oppTeam = opponentTeam || availableTeams[Math.floor(Math.random() * availableTeams.length)];
+        setOpponentTeam(oppTeam);
+
+        // Send to guest
+        p2pManager.send('TEAM_SELECT', { 
+            team1Id: team.id,
+            team2Id: oppTeam.id
+        });
+    }
+
     setTimeout(() => startReveal(), 600);
   };
 
   const handleRandomSelect = () => {
     if (availableTeams.length > 0) {
-        // Filter based on current filter text if any, otherwise all
         const candidates = filteredTeams.length > 0 ? filteredTeams : availableTeams;
         const random = candidates[Math.floor(Math.random() * candidates.length)];
-        
-        // Immediately lock the random selection
         confirmSelection(random);
     }
   };
 
   const handleAutoSelect = () => {
     if (!userTeam) {
-      // If user has focused something, select that. Otherwise random.
       if (focusedTeamId) {
           const focused = availableTeams.find(t => t.id === focusedTeamId);
           if (focused) confirmSelection(focused);
@@ -219,6 +327,7 @@ const GamePage: React.FC = () => {
         return;
     }
 
+    // AI Logic only in Single Player
     const answers = await getAIAnswers(team1, team2);
     aiPotentialAnswers.current = answers;
 
@@ -261,41 +370,15 @@ const GamePage: React.FC = () => {
   const handleSurrender = async () => {
     if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
     
-    const answer = aiPotentialAnswers.current.length > 0 ? aiPotentialAnswers.current[0] : null;
-    let history: string[] = [];
-
-    if (answer && userTeam && opponentTeam) {
-        const result = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
-        if (result.isValid && result.history) {
-            history = sortHistory(result.history);
-        }
-    }
-
+    // In P2P, surrender gives point to opponent
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     
-    const surrenderMsg: GameMessage = {
-        text: "> ROUND SURRENDERED.",
-        isError: true
-    };
-    
-    const revealMsg: GameMessage | null = answer ? {
-        prefix: "> ONE ANSWER WAS: ",
-        highlight: answer.toUpperCase() + "!",
-        isCpuWin: true,
-        history: history
-    } : null;
-
-    setMessages(prev => {
-        const newMsgs = [...prev, surrenderMsg];
-        if (revealMsg) newMsgs.push(revealMsg);
-        return newMsgs;
-    });
-
+    setMessages(prev => [...prev, { text: "> ROUND SURRENDERED.", isError: true }]);
     setGameState(GameState.ROUND_END);
   };
 
-  const handleUserSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUserSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!inputValue.trim() || !userTeam || !opponentTeam) return;
 
     isUserValidating.current = true;
@@ -305,23 +388,26 @@ const GamePage: React.FC = () => {
     
     setMessages(prev => [...prev, { text: `> Analyzing: ${rawInput}...` }]);
 
-    const isKnownValid = aiPotentialAnswers.current.some(a => 
-        a.toLowerCase().includes(inputClean) || 
-        inputClean.includes(a.toLowerCase())
-    );
-    
+    // In P2P, we rely purely on Local DB for fairness, AI fallback is disabled for speed/sync
     const result = await verifyAnswer(userTeam.name, opponentTeam.name, rawInput);
     isUserValidating.current = false;
 
     if (result.isValid) {
       const displayName = result.correctedName || rawInput;
       handleSuccess(displayName, result.source || 'DB', result.history);
-    } else if (isKnownValid) {
-       const matchName = aiPotentialAnswers.current.find(a => a.toLowerCase().includes(inputClean)) || rawInput;
-       handleSuccess(matchName, 'AI', []);
+      
+      // Notify Opponent
+      if (isP2P) {
+          p2pManager.send('SCORE_UPDATE', {
+              answer: displayName,
+              history: result.history
+          });
+      }
+
     } else {
       setMessages(prev => [...prev, { text: `> REJECTED: ${rawInput} is not valid.`, isError: true }]);
-      if (aiPendingWin.current) {
+      // In Single player, this might trigger AI win if race condition
+      if (!isP2P && aiPendingWin.current) {
           handleAIWin(aiPendingWin.current);
           aiPendingWin.current = null;
       }
@@ -352,14 +438,16 @@ const GamePage: React.FC = () => {
   const nextRound = () => {
     setUserTeam(null);
     setFocusedTeamId(null);
-    if (availableTeams.length > 0) {
-        setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
-    }
     setMessages([]);
     setPossibleAnswersCount(null);
     setTimeLeft(30);
     setTeamFilter('');
     setGameState(GameState.SELECTION);
+    
+    // In P2P, host doesn't auto-pick here, waits for user interaction
+    if (!isP2P && availableTeams.length > 0) {
+       setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
+    }
   };
 
   const filteredTeams = useMemo(() => {
@@ -368,6 +456,17 @@ const GamePage: React.FC = () => {
   }, [availableTeams, teamFilter]);
 
   const formatTime = (seconds: number) => `00:${seconds < 10 ? '0' : ''}${seconds}`;
+
+  // Virtual Keyboard Handlers
+  const handleVirtualChar = (char: string) => {
+    setInputValue(prev => prev + char);
+  };
+  const handleVirtualDelete = () => {
+    setInputValue(prev => prev.slice(0, -1));
+  };
+  const handleVirtualEnter = () => {
+    handleUserSubmit();
+  };
 
   return (
     <div className="min-h-screen flex flex-col max-w-2xl mx-auto bg-[#000022] font-mono text-white relative shadow-2xl overflow-hidden border-x-4 border-gray-800">
@@ -379,7 +478,9 @@ const GamePage: React.FC = () => {
              {/* PLAYER 1 */}
              <div className="flex flex-col items-start min-w-0 pr-2">
                  <div className="flex items-center gap-2 mb-2">
-                     <span className="text-xs text-cyan-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">P1</span>
+                     <span className="text-xs text-cyan-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">
+                        {isP2P ? 'YOU' : 'P1'}
+                     </span>
                      <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
                         <span className="text-lg font-pixel text-white">{scores.user}</span>
                      </div>
@@ -394,7 +495,9 @@ const GamePage: React.FC = () => {
                          </span>
                     </div>
                  ) : (
-                    <span className="font-pixel text-sm text-gray-500 animate-pulse">SELECT TEAM...</span>
+                    <span className="font-pixel text-sm text-gray-500 animate-pulse">
+                        {isP2P && !p2pManager.isHost ? 'WAITING FOR HOST...' : 'SELECT TEAM...'}
+                    </span>
                  )}
              </div>
 
@@ -409,13 +512,15 @@ const GamePage: React.FC = () => {
                  )}
              </div>
 
-             {/* CPU */}
+             {/* CPU / OPPONENT */}
              <div className="flex flex-col items-end min-w-0 pl-2">
                  <div className="flex items-center gap-2 mb-2">
                      <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
                         <span className="text-lg font-pixel text-white">{scores.opponent}</span>
                      </div>
-                     <span className="text-xs text-red-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">CPU</span>
+                     <span className={`text-xs font-pixel tracking-widest bg-black/40 px-2 py-1 rounded ${isP2P ? 'text-green-400' : 'text-red-400'}`}>
+                        {isP2P ? 'P2' : 'CPU'}
+                     </span>
                  </div>
 
                  <div className="flex items-center gap-3 w-full justify-end">
@@ -458,21 +563,48 @@ const GamePage: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden bg-[#0A0A1A]">
           {/* Controls Bar */}
           <div className="p-3 gap-2 flex flex-col sm:flex-row border-b border-gray-800 shrink-0">
-             <div className="flex gap-2 w-full">
-                <input 
-                    type="text"
-                    placeholder="FIND CLUB..."
-                    value={teamFilter}
-                    onChange={(e) => setTeamFilter(e.target.value)}
-                    className="flex-1 bg-black border-2 border-gray-600 text-green-400 px-3 py-3 font-pixel text-[10px] uppercase focus:outline-none focus:border-green-400 placeholder-gray-700"
-                />
-                <Button variant="secondary" className="px-4 py-0 text-[10px]" onClick={handleRandomSelect}>
-                   RND
-                </Button>
-             </div>
-             <p className="text-[9px] text-gray-500 text-center sm:text-left mt-1 sm:mt-0 font-pixel self-center">
-                 TAP TO HIGHLIGHT • TAP AGAIN TO LOCK
-             </p>
+             {(!isP2P || p2pManager.isHost) ? (
+                 <>
+                    <div className="flex gap-2 w-full">
+                        <Button 
+                            variant="secondary" 
+                            className="px-3" 
+                            onClick={() => {
+                                if (isP2P) p2pManager.destroy();
+                                navigate('/');
+                            }}
+                        >
+                        «
+                        </Button>
+                        <input 
+                            type="text"
+                            placeholder="FIND CLUB..."
+                            value={teamFilter}
+                            onChange={(e) => setTeamFilter(e.target.value)}
+                            className="flex-1 bg-black border-2 border-gray-600 text-green-400 px-3 py-3 font-pixel text-[10px] uppercase focus:outline-none focus:border-green-400 placeholder-gray-700"
+                        />
+                        <Button variant="secondary" className="px-4 py-0 text-[10px]" onClick={handleRandomSelect}>
+                        RND
+                        </Button>
+                    </div>
+                    <p className="text-[9px] text-gray-500 text-center sm:text-left mt-1 sm:mt-0 font-pixel self-center">
+                        TAP TO HIGHLIGHT • TAP AGAIN TO LOCK
+                    </p>
+                 </>
+             ) : (
+                 <div className="w-full text-center py-4 relative">
+                     <button 
+                        onClick={() => {
+                            if (isP2P) p2pManager.destroy();
+                            navigate('/');
+                        }}
+                        className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white px-2"
+                     >
+                        «
+                     </button>
+                     <p className="text-yellow-400 font-pixel text-sm animate-pulse inline-block">WAITING FOR HOST TO SELECT...</p>
+                 </div>
+             )}
           </div>
 
           {/* Grid Area */}
@@ -485,10 +617,6 @@ const GamePage: React.FC = () => {
              
              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {filteredTeams.map(team => {
-                    // Logic for card status:
-                    // 1. If we have a userTeam locked, that one is 'locked', everyone else is 'disabled'
-                    // 2. If no userTeam, but focusedTeamId matches, it's 'focused'
-                    // 3. Otherwise 'normal'
                     const isLocked = userTeam?.id === team.id;
                     const isFocused = focusedTeamId === team.id;
                     const isDisabled = userTeam !== null && !isLocked;
@@ -510,20 +638,15 @@ const GamePage: React.FC = () => {
                     );
                 })}
             </div>
-             {filteredTeams.length === 0 && isDbLoaded && (
-                <div className="py-10 text-center text-gray-600 font-pixel text-[10px]">NO TEAMS FOUND</div>
-            )}
-            {/* Spacer for bottom button */}
             <div className="h-20"></div>
           </div>
 
-          {/* Bottom Confirmation Button (Floating) */}
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none">
              <div className="pointer-events-auto">
                 <Button 
                     fullWidth 
                     onClick={() => focusedTeamId && confirmSelection(availableTeams.find(t => t.id === focusedTeamId)!)} 
-                    disabled={!focusedTeamId || !!userTeam}
+                    disabled={!focusedTeamId || !!userTeam || (isP2P && !p2pManager.isHost)}
                     variant={userTeam ? "ghost" : "primary"}
                     className={userTeam ? "opacity-0" : "opacity-100 shadow-xl"}
                 >
@@ -562,19 +685,19 @@ const GamePage: React.FC = () => {
 
       {/* --- PHASE: PLAYING --- */}
       {(gameState === GameState.PLAYING || gameState === GameState.ROUND_END) && (
-        <div className="flex-1 flex flex-col min-h-0 bg-[#111122] p-2">
-           {/* Header Info - Using Actual Team Colors */}
-           <div className="bg-black/50 border-y border-gray-700 p-2 mb-2 flex justify-between items-center text-[10px] font-pixel">
+        <div className="flex-1 flex flex-col min-h-0 bg-[#111122]">
+           {/* Header Info */}
+           <div className="bg-black/50 border-y border-gray-700 p-2 flex justify-between items-center text-[10px] font-pixel shrink-0">
               <span className="text-gray-400">GUESS THE PLAYER</span>
               {possibleAnswersCount !== null && (
                   <span className="text-green-500">{possibleAnswersCount} MATCHES FOUND</span>
               )}
            </div>
 
-           {/* Commentary Log (Terminal Style) */}
+           {/* Commentary Log */}
            <div 
              ref={scrollRef}
-             className="flex-1 overflow-y-auto mb-2 space-y-3 p-3 bg-black border-2 border-gray-700 font-pixel text-[11px] leading-relaxed shadow-[inset_0_0_20px_rgba(0,0,0,0.8)]"
+             className="flex-1 overflow-y-auto space-y-3 p-3 bg-black border-x-4 border-black font-pixel text-[11px] leading-relaxed shadow-[inset_0_0_20px_rgba(0,0,0,0.8)]"
            >
               {messages.length === 0 && (
                   <div className="text-green-800 flex flex-col items-center justify-center h-full opacity-50">
@@ -613,21 +736,28 @@ const GamePage: React.FC = () => {
                 </div>
               ))}
               
-              {/* CPU Thinking Indicator */}
-              {gameState === GameState.PLAYING && !isUserValidating.current && possibleAnswersCount && possibleAnswersCount > 0 && (
+              {gameState === GameState.PLAYING && !isP2P && !isUserValidating.current && possibleAnswersCount && possibleAnswersCount > 0 && (
                   <div className="text-gray-600 text-[10px] animate-pulse mt-4">
                       {'>'} CPU IS THINKING...
+                  </div>
+              )}
+              {gameState === GameState.PLAYING && isP2P && (
+                  <div className="text-gray-600 text-[10px] animate-pulse mt-4">
+                      {'>'} VS {p2pManager.opponentName}...
                   </div>
               )}
            </div>
 
            {/* Input Area */}
            {gameState === GameState.PLAYING ? (
-             <div className="mt-auto shrink-0 pb-safe">
+             <div className="shrink-0 flex flex-col">
                {/* Controls Row */}
-               <div className="flex justify-between items-center px-2 py-1 bg-[#0A0A1A] border-x-2 border-t-2 border-gray-700 text-[10px] font-pixel mb-1">
+               <div className="flex justify-between items-center px-2 py-1 bg-[#0A0A1A] border-y border-gray-700 text-[10px] font-pixel">
                   <button 
-                    onClick={() => navigate('/')}
+                    onClick={() => {
+                        if (isP2P) p2pManager.destroy();
+                        navigate('/');
+                    }}
                     className="text-gray-500 hover:text-white px-2 py-1"
                   >
                     « MENU
@@ -644,26 +774,25 @@ const GamePage: React.FC = () => {
                   </button>
                </div>
                
-               <form onSubmit={handleUserSubmit} className="flex gap-2 items-center bg-gray-900 p-2 border-2 border-gray-600">
+               {/* Read-only Display Box */}
+               <div className="flex gap-2 items-center bg-gray-900 p-2 border-x-2 border-gray-600">
                  <span className="font-pixel text-green-500 text-xs blink">{'>'}</span>
-                 <input
-                   ref={inputRef}
-                   type="text"
-                   value={inputValue}
-                   onChange={(e) => setInputValue(e.target.value)}
-                   disabled={possibleAnswersCount === 0}
-                   className="flex-1 bg-transparent text-white font-pixel text-sm focus:outline-none uppercase placeholder-gray-700"
-                   placeholder={possibleAnswersCount === 0 ? "NO MATCHES" : "TYPE SURNAME..."}
-                   autoComplete="off"
-                   autoFocus
-                 />
-                 <Button type="submit" disabled={possibleAnswersCount === 0 || !inputValue.trim()} className="px-4 py-2 text-[10px]">
-                    ENTER
-                 </Button>
-               </form>
+                 <div className="flex-1 bg-transparent text-white font-pixel text-lg h-8 flex items-center overflow-hidden whitespace-nowrap">
+                   {inputValue}
+                   <span className="animate-pulse ml-0.5 opacity-50">_</span>
+                 </div>
+               </div>
+
+               {/* Virtual Keyboard */}
+               <VirtualKeyboard 
+                  onChar={handleVirtualChar}
+                  onDelete={handleVirtualDelete}
+                  onEnter={handleVirtualEnter}
+                  disabled={possibleAnswersCount === 0 || isUserValidating.current}
+               />
              </div>
            ) : (
-             <div className="mt-auto space-y-3 shrink-0 pb-safe">
+             <div className="mt-auto space-y-3 shrink-0 pb-safe p-2">
                <div className={`p-3 text-center border-4 ${
                    messages.find(m => m.isSuccess) 
                     ? 'bg-green-900 border-green-500 text-green-100' 
@@ -673,15 +802,18 @@ const GamePage: React.FC = () => {
                }`}>
                  <h3 className="font-pixel text-sm uppercase tracking-widest">
                    {messages.find(m => m.isSuccess) 
-                    ? 'PLAYER 1 WINS ROUND' 
+                    ? (isP2P ? 'YOU WIN ROUND' : 'PLAYER 1 WINS ROUND')
                     : messages.find(m => m.isCpuWin) 
-                        ? 'CPU WINS ROUND'
+                        ? (isP2P ? `${p2pManager.opponentName} WINS` : 'CPU WINS ROUND')
                         : 'DRAW: NO POINTS'}
                  </h3>
                </div>
                <div className="grid grid-cols-2 gap-3">
                     <Button fullWidth onClick={nextRound} className="h-12 text-xs">NEXT ROUND</Button>
-                    <Button fullWidth variant="secondary" onClick={() => navigate('/')} className="h-12 text-xs">QUIT</Button>
+                    <Button fullWidth variant="secondary" onClick={() => {
+                        if (isP2P) p2pManager.destroy();
+                        navigate('/');
+                    }} className="h-12 text-xs">QUIT</Button>
                </div>
              </div>
            )}

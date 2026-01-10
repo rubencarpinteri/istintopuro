@@ -24,3 +24,16 @@ export interface Message {
   sender: 'user' | 'ai' | 'system';
   timestamp: number;
 }
+
+export type P2PMessageType = 
+  | 'HANDSHAKE' 
+  | 'TEAM_SELECT' 
+  | 'START_GAME' 
+  | 'SCORE_UPDATE' 
+  | 'GAME_OVER'
+  | 'REMATCH';
+
+export interface P2PMessage {
+  type: P2PMessageType;
+  payload: any;
+}
