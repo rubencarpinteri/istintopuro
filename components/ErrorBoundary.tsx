@@ -10,19 +10,22 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = {
-    hasError: false
-  };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false
+    };
+  }
 
-  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
   }
 
-  public render(): ReactNode {
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] text-white p-4 text-center">

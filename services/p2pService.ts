@@ -10,201 +10,200 @@ class P2PService {
   public isHost: boolean = false;
   public opponentName: string = 'Opponent';
 
-  constructor() {
-    this.myId = '';
+  // --- CONFIGURATION ---
+  private readonly PEER_CONFIG = {
+    debug: 0, // Turn off verbose logs to clean up console
+    secure: true,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ]
+    }
+  };
+
+  private generateCode(): string {
+    // 4 Random Letters/Numbers
+    return Math.random().toString(36).substring(2, 6).toUpperCase();
   }
 
-  // Generate a more unique ID to avoid collisions on the public PeerJS server
-  // Format: CMG-XXXX-YY (Random alphanumeric)
-  private generateId(): string {
-    const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const timestampPart = (Date.now() % 1000).toString().padStart(3, '0');
-    return `CMG-${randomPart}${timestampPart}`;
+  private getFullId(code: string): string {
+    return `CMG-${code}`;
   }
 
-  public init(username: string): Promise<string> {
-    this.destroy(); // Ensure clean state
+  // --- HOST LOGIC ---
+
+  /**
+   * Tries to find a free room code. If a code is taken, it automatically retries with a new one.
+   * Returns a Promise that resolves with the SHORT code (e.g. "A1B2")
+   */
+  public startHostSession(username: string): Promise<string> {
+    this.destroy();
+    this.isHost = true;
 
     return new Promise((resolve, reject) => {
-      let isResolved = false;
+      const tryInit = () => {
+        const shortCode = this.generateCode();
+        const fullId = this.getFullId(shortCode);
+        
+        console.log("P2P: Trying to host with ID", fullId);
 
-      // Timeout handler
-      const timeoutTimer = setTimeout(() => {
-        if (!isResolved) {
-            isResolved = true;
-            this.destroy();
-            console.error("PeerJS: Init timed out - Server might be unreachable");
-            reject(new Error("Connection timed out. Retrying might work."));
-        }
-      }, 15000); // 15 seconds
+        const tempPeer = new Peer(fullId, this.PEER_CONFIG);
 
-      try {
-          const customId = this.generateId();
-          console.log("PeerJS: Attempting to connect with ID", customId);
+        // 1. Successful Open
+        tempPeer.on('open', (id) => {
+          console.log("P2P: Host Session Created:", id);
+          this.peer = tempPeer;
+          this.myId = id;
+          this.setupHostListeners(username);
+          resolve(shortCode); // Return only the short code to the UI
+        });
 
-          this.peer = new Peer(customId, {
-            debug: 1,
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                ]
-            }
-          });
-      } catch (e) {
-          isResolved = true;
-          clearTimeout(timeoutTimer);
-          reject(e);
-          return;
+        // 2. Error Handling (specifically unavailable ID)
+        tempPeer.on('error', (err: any) => {
+          if (err.type === 'unavailable-id') {
+            console.warn(`P2P: ID ${fullId} taken, retrying...`);
+            tempPeer.destroy();
+            setTimeout(tryInit, 100); // Retry quickly
+          } else {
+            console.error("P2P: Host Error", err);
+            // Serious network error
+            reject(err);
+          }
+        });
+      };
+
+      tryInit();
+    });
+  }
+
+  private setupHostListeners(username: string) {
+    if (!this.peer) return;
+
+    this.peer.on('connection', (conn) => {
+      console.log('P2P: Guest connected!');
+      
+      // Close previous if any (only 1 guest allowed)
+      if (this.conn && this.conn.open) {
+        this.conn.close();
       }
 
-      // -- Event Handlers --
-
-      this.peer.on('open', (id) => {
-        if (isResolved) return;
-        isResolved = true;
-        clearTimeout(timeoutTimer);
-        console.log('PeerJS: Connected to server. ID:', id);
-        this.myId = id;
-        resolve(id);
+      this.conn = conn;
+      
+      this.conn.on('open', () => {
+        console.log("P2P: Pipe open. Sending handshake.");
+        // Immediate Handshake
+        this.conn?.send({ 
+           type: 'HANDSHAKE', 
+           payload: { username } 
+        });
       });
 
-      this.peer.on('connection', (conn) => {
-        console.log('PeerJS: Incoming connection from', conn.peer);
-        this.handleConnection(conn, username);
-      });
-
-      this.peer.on('disconnected', () => {
-        console.warn('PeerJS: Disconnected from signaling server.');
-        // Auto-reconnect if we are already established, otherwise let it fail
-        if (this.peer && !this.peer.destroyed && isResolved) {
-            this.peer.reconnect();
-        }
-      });
-
-      this.peer.on('close', () => {
-        console.log('PeerJS: Connection closed.');
-        this.conn = null;
-      });
-
-      this.peer.on('error', (err) => {
-        console.error('PeerJS Error:', err.type, err.message);
-        
-        // If we get an "unavailable-id" error, it means collision. We should probably retry.
-        if (!isResolved) {
-            isResolved = true;
-            clearTimeout(timeoutTimer);
-            reject(new Error(`Connection failed: ${err.type}`));
-        }
+      this.conn.on('data', (data: any) => this.handleIncomingData(data));
+      
+      this.conn.on('close', () => {
+         console.log("P2P: Guest disconnected");
+         this.conn = null;
       });
     });
   }
 
-  public connect(hostId: string, username: string): Promise<void> {
-    // If peer not initialized, we must init first (with a random ID, doesn't matter for joiner)
+  // --- GUEST LOGIC ---
+
+  public startGuestSession(username: string): Promise<void> {
+    this.destroy();
+    this.isHost = false;
+
+    return new Promise((resolve, reject) => {
+      // Guests just get a random ID from server
+      this.peer = new Peer(undefined, this.PEER_CONFIG);
+
+      this.peer.on('open', (id) => {
+        console.log("P2P: Guest initialized with ID", id);
+        this.myId = id;
+        resolve();
+      });
+
+      this.peer.on('error', (err) => {
+        console.error("P2P: Guest Init Error", err);
+        reject(err);
+      });
+    });
+  }
+
+  public connectToRoom(shortCode: string, username: string): Promise<void> {
     if (!this.peer || this.peer.destroyed) {
-         return this.init(username).then(() => this.connect(hostId, username));
+       return Promise.reject(new Error("Peer not initialized"));
     }
 
-    this.isHost = false;
-    // Close existing connection if any
+    const hostId = this.getFullId(shortCode);
+    console.log("P2P: Connecting to host...", hostId);
+
+    // Close existing connection
     if (this.conn) {
         this.conn.close();
     }
 
-    console.log("PeerJS: Connecting to host", hostId);
-
     try {
         const conn = this.peer.connect(hostId, {
-          metadata: { username },
-          reliable: true
+            metadata: { username },
+            reliable: true
         });
 
         return new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-              reject(new Error("Connection to host timed out. Check the code."));
-          }, 10000);
+            const timeout = setTimeout(() => {
+                reject(new Error("Host unresponsive. Check room code."));
+            }, 8000);
 
-          conn.on('open', () => {
-            clearTimeout(timeout);
-            console.log("PeerJS: DataConnection opened to", hostId);
-            this.handleConnection(conn, username);
-            resolve();
-          });
+            conn.on('open', () => {
+                clearTimeout(timeout);
+                console.log("P2P: Connected to host!");
+                this.conn = conn;
+                this.conn.on('data', (data: any) => this.handleIncomingData(data));
+                
+                // As a guest, we send our name immediately upon open
+                this.send('HANDSHAKE', { username });
+                
+                resolve();
+            });
 
-          conn.on('error', (err) => {
-            clearTimeout(timeout);
-            console.error("DataConnection error:", err);
-            reject(err);
-          });
-          
-          conn.on('close', () => {
-             console.log("DataConnection closed immediately");
-          });
-          
-          // If the peer object itself errors out during connection (e.g. peer not found)
-          const peerErrorListener = (err: any) => {
-             if (err.type === 'peer-unavailable') {
-                 clearTimeout(timeout);
-                 reject(new Error("Room code not found."));
-             }
-          };
-          
-          this.peer?.once('error', peerErrorListener);
-          
-          // Cleanup listener if successful
-          conn.once('open', () => {
-              this.peer?.off('error', peerErrorListener);
-          });
+            conn.on('error', (err) => {
+                clearTimeout(timeout);
+                console.error("P2P Connection Error:", err);
+                reject(err);
+            });
+            
+            // If the peer specifically says the user is missing
+            this.peer?.on('error', (err: any) => {
+                if (err.type === 'peer-unavailable') {
+                    clearTimeout(timeout);
+                    reject(new Error("Room not found. Check code."));
+                }
+            });
         });
     } catch (e) {
         return Promise.reject(e);
     }
   }
 
-  private handleConnection(conn: DataConnection, myUsername: string) {
-    this.conn = conn;
-    
-    if (conn.metadata && conn.metadata.username) {
-        this.opponentName = conn.metadata.username;
+  // --- SHARED ---
+
+  private handleIncomingData(data: any) {
+    const msg = data as P2PMessage;
+    // console.log("RX:", msg.type);
+
+    if (msg.type === 'HANDSHAKE') {
+       this.opponentName = msg.payload.username;
+       console.log("Opponent:", this.opponentName);
     }
 
-    // If I am host, send a handshake immediately to confirm connection
-    if (this.isHost) {
-        setTimeout(() => {
-             if (this.conn?.open) {
-                this.conn.send({ type: 'HANDSHAKE', payload: { username: myUsername } });
-             }
-        }, 500);
-    }
-
-    conn.on('data', (data: any) => {
-      const msg = data as P2PMessage;
-      console.log("Received P2P Message:", msg.type);
-      
-      if (msg.type === 'HANDSHAKE' && !this.isHost) {
-        this.opponentName = msg.payload.username;
-        console.log("Opponent identified as:", this.opponentName);
-      }
-      
-      this.messageHandlers.forEach(handler => handler(msg));
-    });
-
-    conn.on('close', () => {
-      console.log("DataConnection closed");
-      this.conn = null;
-    });
-    
-    conn.on('error', (err) => {
-        console.error("DataConnection error:", err);
-    });
+    this.messageHandlers.forEach(h => h(msg));
   }
 
   public send(type: any, payload: any) {
     if (this.conn && this.conn.open) {
       this.conn.send({ type, payload });
-    } else {
-        console.warn("P2P: Cannot send message, connection not open.");
     }
   }
 
@@ -225,10 +224,8 @@ class P2PService {
       this.peer = null;
     }
     this.messageHandlers = [];
-    this.myId = '';
     this.isHost = false;
   }
 }
 
-// Singleton instance
 export const p2pManager = new P2PService();

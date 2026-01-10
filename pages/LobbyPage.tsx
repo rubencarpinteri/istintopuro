@@ -6,72 +6,85 @@ import { storageService } from '../services/storageService';
 
 const LobbyPage: React.FC = () => {
   const navigate = useNavigate();
-  // Initialize with storage service username or localstorage fallback
   const [username, setUsername] = useState(storageService.getStats().username || '');
-  const [roomCode, setRoomCode] = useState(''); // For joining
-  const [myRoomCode, setMyRoomCode] = useState(''); // If hosting
+  const [roomCode, setRoomCode] = useState(''); 
+  const [myRoomCode, setMyRoomCode] = useState(''); 
   const [status, setStatus] = useState<'idle' | 'initializing' | 'waiting' | 'connecting'>('idle');
+  const [statusMsg, setStatusMsg] = useState('');
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'host' | 'join'>('host');
 
   useEffect(() => {
-    // Ensure we start fresh
     p2pManager.destroy();
   }, []);
 
-  const handleInit = async () => {
+  const handleCreateRoom = async () => {
     if (!username.trim()) {
       setError('ENTER NICKNAME');
       return;
     }
-    setError(''); // Clear previous errors
+    setError('');
     storageService.updateUsername(username);
     
     try {
       setStatus('initializing');
-      const id = await p2pManager.init(username);
+      setStatusMsg('FINDING EMPTY FREQUENCY...');
       
-      if (mode === 'host') {
-        p2pManager.isHost = true;
-        setMyRoomCode(id);
-        setStatus('waiting');
-        
-        // Listen for incoming connection
-        p2pManager.onMessage((msg) => {
-             if (msg.type === 'HANDSHAKE' || msg.type === 'START_GAME') {
-                 navigate('/game?mode=p2p');
-             }
-        });
-      } else {
-        // Init done, now ready to join
-        setStatus('idle'); 
-      }
+      // This automatically retries until it finds a free code
+      const code = await p2pManager.startHostSession(username);
+      
+      setMyRoomCode(code);
+      setStatus('waiting');
+      setStatusMsg('');
+      
+      // Wait for player
+      p2pManager.onMessage((msg) => {
+           if (msg.type === 'HANDSHAKE' || msg.type === 'START_GAME') {
+               navigate('/game?mode=p2p');
+           }
+      });
     } catch (e: any) {
       console.error(e);
-      setError(e.message || 'CONNECTION FAILED');
+      setError('SERVER ERROR. TRY AGAIN.');
       setStatus('idle');
     }
   };
 
-  const handleJoin = async () => {
-    if (!roomCode) return;
+  const handleJoinRoom = async () => {
+    if (!username.trim()) {
+       setError('ENTER NICKNAME');
+       return;
+    }
+    if (!roomCode || roomCode.length < 4) {
+        setError('INVALID CODE');
+        return;
+    }
     setError('');
+    storageService.updateUsername(username);
     
     try {
       setStatus('connecting');
-      // If peer not init, do it now
+      setStatusMsg('INITIALIZING...');
+
+      // 1. Initialize Guest (get random ID)
       if (!p2pManager.myId) {
-          await p2pManager.init(username);
+          await p2pManager.startGuestSession(username); 
       }
-      await p2pManager.connect(roomCode, username);
-      // Wait for connection to open
+      
+      // 2. Connect to Host
+      setStatusMsg(`SEARCHING FOR ${roomCode.toUpperCase()}...`);
+      await p2pManager.connectToRoom(roomCode.toUpperCase(), username);
+      
+      // Success, move to game
       setTimeout(() => {
          navigate('/game?mode=p2p');
       }, 500);
+
     } catch (e: any) {
       console.error(e);
-      setError(e.message || 'INVALID CODE OR ERROR');
+      setError(e.message || 'CONNECTION FAILED');
       setStatus('idle');
+      // Do not destroy p2pManager here, user might retry with a fixed code
     }
   };
 
@@ -79,6 +92,7 @@ const LobbyPage: React.FC = () => {
       p2pManager.destroy();
       setStatus('idle');
       setError('');
+      setStatusMsg('');
   };
 
   return (
@@ -89,7 +103,6 @@ const LobbyPage: React.FC = () => {
              <p className="text-xs text-gray-400">CONNECT DIRECTLY P2P</p>
           </div>
 
-          {/* Username Input */}
           <div className="space-y-2">
             <label className="text-xs text-blue-300">YOUR NICKNAME</label>
             <input 
@@ -122,21 +135,22 @@ const LobbyPage: React.FC = () => {
 
                  {mode === 'host' ? (
                      <div className="text-center p-4 border-2 border-dashed border-gray-700 bg-black/50">
-                        <p className="text-xs text-gray-400 mb-4">CREATE A ROOM CODE TO SHARE</p>
-                        <Button fullWidth onClick={handleInit}>CREATE ROOM</Button>
+                        <p className="text-xs text-gray-400 mb-4">GENERATE A ROOM CODE</p>
+                        <Button fullWidth onClick={handleCreateRoom}>CREATE ROOM</Button>
                      </div>
                  ) : (
                      <div className="text-center p-4 border-2 border-dashed border-gray-700 bg-black/50 space-y-4">
-                        <p className="text-xs text-gray-400">ENTER FRIEND'S CODE</p>
+                        <p className="text-xs text-gray-400">ENTER HOST'S CODE</p>
                         <div className="flex flex-col sm:flex-row gap-2 items-stretch">
                             <input 
                                 type="text" 
                                 value={roomCode}
                                 onChange={e => setRoomCode(e.target.value.toUpperCase())}
                                 className="flex-1 bg-black/20 border-2 border-green-500 p-3 text-center text-lg text-white/20 placeholder:text-white/20 outline-none focus:bg-black/40 min-w-0"
-                                placeholder="CMG-XXXX"
+                                placeholder="ABCD"
+                                maxLength={4}
                             />
-                            <Button className="whitespace-nowrap" onClick={handleJoin}>JOIN</Button>
+                            <Button className="whitespace-nowrap" onClick={handleJoinRoom}>JOIN</Button>
                         </div>
                      </div>
                  )}
@@ -146,18 +160,20 @@ const LobbyPage: React.FC = () => {
                  {status === 'waiting' ? (
                      <>
                         <h3 className="text-xs text-blue-200 mb-2">SHARE THIS CODE</h3>
-                        <div className="text-2xl sm:text-4xl font-bold tracking-widest text-yellow-300 animate-pulse select-all cursor-pointer break-all" onClick={() => navigator.clipboard.writeText(myRoomCode)}>
+                        <div className="text-4xl sm:text-5xl font-bold tracking-widest text-yellow-300 animate-pulse select-all cursor-pointer">
                             {myRoomCode}
                         </div>
                         <p className="text-[10px] text-gray-400 mt-4">WAITING FOR CHALLENGER...</p>
-                        <button onClick={handleCancel} className="text-xs text-red-300 underline mt-2">CANCEL</button>
                      </>
                  ) : (
                      <div className="flex flex-col items-center">
-                         <div className="text-lg animate-pulse mb-4">CONNECTING...</div>
-                         <button onClick={handleCancel} className="text-xs text-red-300 underline">CANCEL</button>
+                         <div className="text-xs font-pixel text-green-400 mb-2 animate-bounce">
+                             {status === 'initializing' ? '📡' : '🔗'}
+                         </div>
+                         <div className="text-sm animate-pulse mb-4 text-yellow-300">{statusMsg || 'CONNECTING...'}</div>
                      </div>
                  )}
+                 <button onClick={handleCancel} className="text-xs text-red-300 underline mt-4">CANCEL</button>
              </div>
           )}
           
