@@ -5,6 +5,7 @@ class P2PService {
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
   private messageHandlers: ((msg: P2PMessage) => void)[] = [];
+  private disconnectHandler: (() => void) | null = null;
   
   public myId: string = '';
   public isHost: boolean = false;
@@ -12,13 +13,12 @@ class P2PService {
 
   // --- CONFIGURATION ---
   private readonly PEER_CONFIG = {
-    debug: 0, // Turn off verbose logs to clean up console
+    debug: 1, // Minimal logs
     secure: true,
     config: {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
       ]
     }
   };
@@ -35,19 +35,28 @@ class P2PService {
   // --- HOST LOGIC ---
 
   /**
-   * Tries to find a free room code. If a code is taken, it automatically retries with a new one.
-   * Returns a Promise that resolves with the SHORT code (e.g. "A1B2")
+   * Tries to find a free room code.
    */
   public startHostSession(username: string): Promise<string> {
+    // Ensure thorough cleanup before starting new session
     this.destroy();
     this.isHost = true;
 
     return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 5;
+
       const tryInit = () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+          reject(new Error("Could not generate a unique room code. Try again."));
+          return;
+        }
+
         const shortCode = this.generateCode();
         const fullId = this.getFullId(shortCode);
         
-        console.log("P2P: Trying to host with ID", fullId);
+        console.log(`P2P: Attempting to host (Try ${attempts}) with ID: ${fullId}`);
 
         const tempPeer = new Peer(fullId, this.PEER_CONFIG);
 
@@ -57,18 +66,22 @@ class P2PService {
           this.peer = tempPeer;
           this.myId = id;
           this.setupHostListeners(username);
-          resolve(shortCode); // Return only the short code to the UI
+          resolve(shortCode);
         });
 
-        // 2. Error Handling (specifically unavailable ID)
+        // 2. Error Handling
         tempPeer.on('error', (err: any) => {
+          console.warn("P2P Init Error:", err.type);
           if (err.type === 'unavailable-id') {
-            console.warn(`P2P: ID ${fullId} taken, retrying...`);
+            // ID taken, retry immediately
             tempPeer.destroy();
-            setTimeout(tryInit, 100); // Retry quickly
+            setTimeout(tryInit, 50); 
+          } else if (err.type === 'server-error' || err.type === 'socket-error') {
+             // Network fluctuation, retry with slight backoff
+             tempPeer.destroy();
+             setTimeout(tryInit, 500);
           } else {
-            console.error("P2P: Host Error", err);
-            // Serious network error
+            // Serious fatal error
             reject(err);
           }
         });
@@ -90,22 +103,7 @@ class P2PService {
       }
 
       this.conn = conn;
-      
-      this.conn.on('open', () => {
-        console.log("P2P: Pipe open. Sending handshake.");
-        // Immediate Handshake
-        this.conn?.send({ 
-           type: 'HANDSHAKE', 
-           payload: { username } 
-        });
-      });
-
-      this.conn.on('data', (data: any) => this.handleIncomingData(data));
-      
-      this.conn.on('close', () => {
-         console.log("P2P: Guest disconnected");
-         this.conn = null;
-      });
+      this.setupConnectionEvents(conn, username);
     });
   }
 
@@ -160,11 +158,10 @@ class P2PService {
                 clearTimeout(timeout);
                 console.log("P2P: Connected to host!");
                 this.conn = conn;
-                this.conn.on('data', (data: any) => this.handleIncomingData(data));
+                this.setupConnectionEvents(conn, username);
                 
-                // As a guest, we send our name immediately upon open
+                // Send handshake immediately
                 this.send('HANDSHAKE', { username });
-                
                 resolve();
             });
 
@@ -174,7 +171,7 @@ class P2PService {
                 reject(err);
             });
             
-            // If the peer specifically says the user is missing
+            // Peer specific errors
             this.peer?.on('error', (err: any) => {
                 if (err.type === 'peer-unavailable') {
                     clearTimeout(timeout);
@@ -187,18 +184,43 @@ class P2PService {
     }
   }
 
-  // --- SHARED ---
+  // --- SHARED CONNECTION LOGIC ---
+
+  private setupConnectionEvents(conn: DataConnection, myUsername: string) {
+    conn.on('data', (data: any) => this.handleIncomingData(data));
+    
+    conn.on('close', () => {
+         console.log("P2P: Connection closed remotely");
+         this.handleDisconnect();
+    });
+
+    conn.on('error', (err) => {
+        console.error("P2P: Data Connection Error", err);
+        this.handleDisconnect();
+    });
+  }
 
   private handleIncomingData(data: any) {
     const msg = data as P2PMessage;
-    // console.log("RX:", msg.type);
-
+    
     if (msg.type === 'HANDSHAKE') {
        this.opponentName = msg.payload.username;
-       console.log("Opponent:", this.opponentName);
+       // If I am host, I reply with handshake to confirm connection
+       if (this.isHost) {
+           // We don't need to explicitly reply, but ensuring opponent knows my name is handled by lobby logic or implicit state
+       }
     }
 
     this.messageHandlers.forEach(h => h(msg));
+  }
+
+  private handleDisconnect() {
+      // Notify listeners (UI) that opponent is gone
+      if (this.disconnectHandler) {
+          this.disconnectHandler();
+      }
+      // Also inject a message for internal logic
+      this.messageHandlers.forEach(h => h({ type: 'OPPONENT_DISCONNECT', payload: {} }));
   }
 
   public send(type: any, payload: any) {
@@ -214,6 +236,10 @@ class P2PService {
     };
   }
 
+  public onDisconnect(handler: () => void) {
+      this.disconnectHandler = handler;
+  }
+
   public destroy() {
     if (this.conn) {
         this.conn.close();
@@ -224,6 +250,7 @@ class P2PService {
       this.peer = null;
     }
     this.messageHandlers = [];
+    this.disconnectHandler = null;
     this.isHost = false;
   }
 }

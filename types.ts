@@ -32,9 +32,14 @@ export type P2PMessageType =
   | 'SCORE_UPDATE' 
   | 'GAME_OVER'
   | 'REMATCH'
-  | 'ROUND_TIMEOUT';
+  | 'ROUND_TIMEOUT'
+  | 'OPPONENT_DISCONNECT';
 
 export interface P2PMessage {
   type: P2PMessageType;
   payload: any;
+}
+
+export interface MatchConfig {
+  bestOf: number; // 3, 5, 10
 }

@@ -9,12 +9,14 @@ const LobbyPage: React.FC = () => {
   const [username, setUsername] = useState(storageService.getStats().username || '');
   const [roomCode, setRoomCode] = useState(''); 
   const [myRoomCode, setMyRoomCode] = useState(''); 
-  const [status, setStatus] = useState<'idle' | 'initializing' | 'waiting' | 'connecting'>('idle');
+  const [status, setStatus] = useState<'idle' | 'initializing' | 'waiting' | 'connecting' | 'ready'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'host' | 'join'>('host');
+  const [bestOf, setBestOf] = useState<number>(3); // Default Best of 3
 
   useEffect(() => {
+    // Ensure we start fresh
     p2pManager.destroy();
   }, []);
 
@@ -28,26 +30,34 @@ const LobbyPage: React.FC = () => {
     
     try {
       setStatus('initializing');
-      setStatusMsg('FINDING EMPTY FREQUENCY...');
+      setStatusMsg('TUNING FREQUENCY...');
       
-      // This automatically retries until it finds a free code
       const code = await p2pManager.startHostSession(username);
       
       setMyRoomCode(code);
       setStatus('waiting');
-      setStatusMsg('');
+      setStatusMsg('WAITING FOR CHALLENGER...');
       
-      // Wait for player
+      // Wait for player to join
       p2pManager.onMessage((msg) => {
-           if (msg.type === 'HANDSHAKE' || msg.type === 'START_GAME') {
-               navigate('/game?mode=p2p');
+           if (msg.type === 'HANDSHAKE') {
+               setStatus('ready');
+               setStatusMsg(`${p2pManager.opponentName} CONNECTED!`);
            }
       });
     } catch (e: any) {
       console.error(e);
-      setError('SERVER ERROR. TRY AGAIN.');
+      setError('CONNECTION ERROR. RETRY.');
       setStatus('idle');
     }
+  };
+
+  const handleStartGame = () => {
+      // Host starts the game and sends config
+      p2pManager.send('START_GAME', { 
+          matchConfig: { bestOf } 
+      });
+      navigate(`/game?mode=p2p&bestOf=${bestOf}`);
   };
 
   const handleJoinRoom = async () => {
@@ -64,27 +74,29 @@ const LobbyPage: React.FC = () => {
     
     try {
       setStatus('connecting');
-      setStatusMsg('INITIALIZING...');
+      setStatusMsg('SEARCHING SIGNAL...');
 
-      // 1. Initialize Guest (get random ID)
       if (!p2pManager.myId) {
           await p2pManager.startGuestSession(username); 
       }
       
-      // 2. Connect to Host
-      setStatusMsg(`SEARCHING FOR ${roomCode.toUpperCase()}...`);
       await p2pManager.connectToRoom(roomCode.toUpperCase(), username);
       
-      // Success, move to game
-      setTimeout(() => {
-         navigate('/game?mode=p2p');
-      }, 500);
+      setStatus('ready');
+      setStatusMsg('CONNECTED! WAITING FOR HOST...');
+
+      // Listen for Start Game command from Host
+      p2pManager.onMessage((msg) => {
+          if (msg.type === 'START_GAME') {
+              const config = msg.payload.matchConfig;
+              navigate(`/game?mode=p2p&bestOf=${config.bestOf}`);
+          }
+      });
 
     } catch (e: any) {
       console.error(e);
       setError(e.message || 'CONNECTION FAILED');
       setStatus('idle');
-      // Do not destroy p2pManager here, user might retry with a fixed code
     }
   };
 
@@ -93,6 +105,7 @@ const LobbyPage: React.FC = () => {
       setStatus('idle');
       setError('');
       setStatusMsg('');
+      setMyRoomCode('');
   };
 
   return (
@@ -123,19 +136,32 @@ const LobbyPage: React.FC = () => {
                         onClick={() => setMode('host')}
                         className={`flex-1 py-4 border-2 transition-all ${mode === 'host' ? 'bg-blue-700 border-white' : 'bg-gray-800 border-gray-600 text-gray-500'}`}
                     >
-                        HOST GAME
+                        HOST
                     </button>
                     <button 
                         onClick={() => setMode('join')}
                         className={`flex-1 py-4 border-2 transition-all ${mode === 'join' ? 'bg-green-700 border-white' : 'bg-gray-800 border-gray-600 text-gray-500'}`}
                     >
-                        JOIN GAME
+                        JOIN
                     </button>
                  </div>
 
                  {mode === 'host' ? (
-                     <div className="text-center p-4 border-2 border-dashed border-gray-700 bg-black/50">
-                        <p className="text-xs text-gray-400 mb-4">GENERATE A ROOM CODE</p>
+                     <div className="p-4 border-2 border-dashed border-gray-700 bg-black/50 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 block text-center">MATCH LENGTH</label>
+                            <div className="flex gap-2 justify-center">
+                                {[3, 5, 10].map(val => (
+                                    <button
+                                        key={val}
+                                        onClick={() => setBestOf(val)}
+                                        className={`px-4 py-2 border ${bestOf === val ? 'bg-yellow-600 border-yellow-400 text-white' : 'bg-black border-gray-600 text-gray-500'}`}
+                                    >
+                                        BEST OF {val}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                         <Button fullWidth onClick={handleCreateRoom}>CREATE ROOM</Button>
                      </div>
                  ) : (
@@ -163,8 +189,28 @@ const LobbyPage: React.FC = () => {
                         <div className="text-4xl sm:text-5xl font-bold tracking-widest text-yellow-300 animate-pulse select-all cursor-pointer">
                             {myRoomCode}
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-4">WAITING FOR CHALLENGER...</p>
+                        <div className="flex flex-col items-center gap-2 mt-4">
+                            <p className="text-[10px] text-gray-400">WAITING FOR CHALLENGER...</p>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        </div>
                      </>
+                 ) : status === 'ready' ? (
+                     <div className="space-y-4">
+                         <div className="text-green-400 text-lg animate-bounce">✓ CONNECTED</div>
+                         <div className="bg-black/40 p-4 mx-4 border border-white/20">
+                             <p className="text-xs text-gray-400 mb-1">OPPONENT</p>
+                             <p className="text-xl">{p2pManager.opponentName}</p>
+                         </div>
+                         {mode === 'host' ? (
+                             <div className="px-4 pt-2">
+                                <Button fullWidth onClick={handleStartGame} variant="primary" className="bg-yellow-600 border-yellow-300 hover:bg-yellow-500">
+                                    START MATCH (BO{bestOf})
+                                </Button>
+                             </div>
+                         ) : (
+                             <p className="text-xs text-gray-400 animate-pulse">WAITING FOR HOST TO START...</p>
+                         )}
+                     </div>
                  ) : (
                      <div className="flex flex-col items-center">
                          <div className="text-xs font-pixel text-green-400 mb-2 animate-bounce">
@@ -173,7 +219,10 @@ const LobbyPage: React.FC = () => {
                          <div className="text-sm animate-pulse mb-4 text-yellow-300">{statusMsg || 'CONNECTING...'}</div>
                      </div>
                  )}
-                 <button onClick={handleCancel} className="text-xs text-red-300 underline mt-4">CANCEL</button>
+                 
+                 <button onClick={handleCancel} className="text-xs text-red-300 underline mt-4 hover:text-red-100">
+                     CANCEL CONNECTION
+                 </button>
              </div>
           )}
           

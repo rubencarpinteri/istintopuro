@@ -45,20 +45,23 @@ const GamePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isP2P = searchParams.get('mode') === 'p2p';
+  const bestOfParam = searchParams.get('bestOf');
+  const maxRounds = bestOfParam ? parseInt(bestOfParam) : 3;
+  const targetWins = Math.ceil(maxRounds / 2);
 
   const [gameState, setGameState] = useState<GameState>(GameState.SELECTION);
   
   // Selection State
-  const [focusedTeamId, setFocusedTeamId] = useState<string | null>(null); // Visual focus
-  const [userTeam, setUserTeam] = useState<Team | null>(null); // Confirmed selection
+  const [focusedTeamId, setFocusedTeamId] = useState<string | null>(null); 
+  const [userTeam, setUserTeam] = useState<Team | null>(null); 
   
   // Opponent State
-  const [opponentTeam, setOpponentTeam] = useState<Team | null>(null); // Visible opponent team
-  const [opponentSecretTeam, setOpponentSecretTeam] = useState<Team | null>(null); // P2P hidden choice
+  const [opponentTeam, setOpponentTeam] = useState<Team | null>(null); 
+  const [opponentSecretTeam, setOpponentSecretTeam] = useState<Team | null>(null); 
   const [isOpponentReady, setIsOpponentReady] = useState(false);
 
-  const [timeLeft, setTimeLeft] = useState(30); // Selection Timer
-  const [roundTimeLeft, setRoundTimeLeft] = useState(60); // Round Timer
+  const [timeLeft, setTimeLeft] = useState(30); 
+  const [roundTimeLeft, setRoundTimeLeft] = useState(60); 
   const [inputValue, setInputValue] = useState('');
   
   // Data State
@@ -68,7 +71,9 @@ const GamePage: React.FC = () => {
 
   // Gameplay State
   const [messages, setMessages] = useState<GameMessage[]>([]);
-  const [scores, setScores] = useState({ user: 0, opponent: 0 });
+  const [scores, setScores] = useState({ user: 0, opponent: 0 }); // Rounds won
+  const [matchWinner, setMatchWinner] = useState<'USER' | 'OPPONENT' | 'DISCONNECT' | null>(null);
+  
   const [possibleAnswersCount, setPossibleAnswersCount] = useState<number | null>(null);
   
   // Refs
@@ -81,42 +86,51 @@ const GamePage: React.FC = () => {
   const isUserValidating = useRef(false);
   const aiPendingWin = useRef<string | null>(null);
 
+  // Match End Logic
+  useEffect(() => {
+     if (scores.user >= targetWins) {
+         setMatchWinner('USER');
+         setGameState(GameState.MATCH_END);
+         storageService.saveMatch('WIN', isP2P ? p2pManager.opponentName : 'CPU', `Match (Best of ${maxRounds})`);
+     } else if (scores.opponent >= targetWins) {
+         setMatchWinner('OPPONENT');
+         setGameState(GameState.MATCH_END);
+         storageService.saveMatch('LOSS', isP2P ? p2pManager.opponentName : 'CPU', `Match (Best of ${maxRounds})`);
+     }
+  }, [scores, targetWins, isP2P, maxRounds]);
+
   // P2P Listeners
   useEffect(() => {
     if (!isP2P) return;
 
-    // Listen for P2P messages
+    // Handle Opponent Disconnect specifically
+    p2pManager.onDisconnect(() => {
+        setMatchWinner('DISCONNECT');
+        setGameState(GameState.MATCH_END);
+    });
+
     const removeListener = p2pManager.onMessage((msg) => {
-        if (msg.type === 'TEAM_SELECT') {
-            // Opponent has selected a team
+        if (msg.type === 'OPPONENT_DISCONNECT') {
+             setMatchWinner('DISCONNECT');
+             setGameState(GameState.MATCH_END);
+        }
+        else if (msg.type === 'TEAM_SELECT') {
             const { teamId } = msg.payload;
             const selected = availableTeams.find(t => t.id === teamId);
-            
             if (selected) {
                 setOpponentSecretTeam(selected);
                 setIsOpponentReady(true);
-                
-                // If I have already selected, trigger reveal immediately
-                // Using a ref or checking state in effect is tricky due to closure
-                // We rely on a separate useEffect to monitor both states
             }
         } 
         else if (msg.type === 'SCORE_UPDATE') {
-            // Opponent scored!
             const { answer, history } = msg.payload;
             setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
             setMessages(prev => [...prev, { 
                 prefix: `> ${p2pManager.opponentName} found: `,
                 highlight: answer.toUpperCase(),
-                isCpuWin: true, // Reusing style for opponent
+                isCpuWin: true, 
                 history: history
             }]);
-            
-            // Record Loss
-            if (userTeam && opponentTeam) {
-                storageService.saveMatch('LOSS', p2pManager.opponentName, `${userTeam.name} vs ${opponentTeam.name}`);
-            }
-
             setGameState(GameState.ROUND_END);
         }
         else if (msg.type === 'ROUND_TIMEOUT') {
@@ -125,7 +139,7 @@ const GamePage: React.FC = () => {
     });
 
     return () => removeListener();
-  }, [isP2P, availableTeams, userTeam, opponentTeam]);
+  }, [isP2P, availableTeams]);
 
   // Sync Effect: Check if both players are ready to reveal
   useEffect(() => {
@@ -186,24 +200,21 @@ const GamePage: React.FC = () => {
     }
   }, [gameState, timeLeft, userTeam]);
 
-  // Round Timer (60s) - Active during PLAYING phase
+  // Round Timer
   useEffect(() => {
-      // Clear any existing timer when not playing
       if (gameState !== GameState.PLAYING) {
           if (roundTimerRef.current) clearInterval(roundTimerRef.current);
           return;
       }
 
-      // Initialize round timer
       setRoundTimeLeft(60);
 
-      // Only Host (or single player) manages the authoritative timer
+      // Only Host manages authoritative timer in P2P, or Single Player
       if (!isP2P || p2pManager.isHost) {
           roundTimerRef.current = setInterval(() => {
               setRoundTimeLeft(prev => {
                   if (prev <= 1) {
                       if (roundTimerRef.current) clearInterval(roundTimerRef.current);
-                      // Trigger Draw
                       if (isP2P) {
                           p2pManager.send('ROUND_TIMEOUT', {});
                       }
@@ -214,7 +225,6 @@ const GamePage: React.FC = () => {
               });
           }, 1000);
       } else {
-          // Client side just visually decrements, sync is loose but handled by receiving ROUND_TIMEOUT message from host
            roundTimerRef.current = setInterval(() => {
               setRoundTimeLeft(prev => Math.max(0, prev - 1));
            }, 1000);
@@ -308,13 +318,8 @@ const GamePage: React.FC = () => {
     setFocusedTeamId(team.id); 
     
     if (isP2P) {
-        // In P2P, we just send our choice and wait.
-        p2pManager.send('TEAM_SELECT', { 
-            teamId: team.id
-        });
-        // Transition to reveal handles in the useEffect when both are ready
+        p2pManager.send('TEAM_SELECT', { teamId: team.id });
     } else {
-        // Single Player: Opponent is already set by AI logic
         setTimeout(() => startReveal(), 600);
     }
   };
@@ -382,7 +387,6 @@ const GamePage: React.FC = () => {
   const handleDraw = (reason: string = "DRAW") => {
       if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
       setMessages(prev => [...prev, { text: `> ${reason}`, isError: true }]);
-      // No score updates for draw
       setGameState(GameState.ROUND_END);
   };
 
@@ -390,9 +394,6 @@ const GamePage: React.FC = () => {
     let history: string[] | undefined = [];
 
     if (userTeam && opponentTeam) {
-        // Save Loss
-        storageService.saveMatch('LOSS', 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
-        
         try {
             const verifyResult = await verifyAnswer(userTeam.name, opponentTeam.name, answer);
             if (verifyResult.isValid && verifyResult.history) {
@@ -415,15 +416,8 @@ const GamePage: React.FC = () => {
 
   const handleSurrender = async () => {
     if (gameLoopRef.current) clearTimeout(gameLoopRef.current);
-    
     setScores(prev => ({ ...prev, opponent: prev.opponent + 1 }));
     setMessages(prev => [...prev, { text: "> ROUND SURRENDERED.", isError: true }]);
-    
-    // Save Loss
-    if (userTeam && opponentTeam) {
-       storageService.saveMatch('LOSS', isP2P ? p2pManager.opponentName : 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
-    }
-
     setGameState(GameState.ROUND_END);
   };
 
@@ -462,12 +456,8 @@ const GamePage: React.FC = () => {
 
   const handleSuccess = async (answer: string, source: string, history?: string[]) => {
     let sortedHistory: string[] = [];
-    if (userTeam && opponentTeam) {
-        if (history) {
-            sortedHistory = sortHistory(history);
-        }
-        // Save Win
-        storageService.saveMatch('WIN', isP2P ? p2pManager.opponentName : 'CPU', `${userTeam.name} vs ${opponentTeam.name}`);
+    if (userTeam && opponentTeam && history) {
+         sortedHistory = sortHistory(history);
     }
 
     setScores(prev => ({ ...prev, user: prev.user + 1 }));
@@ -496,10 +486,8 @@ const GamePage: React.FC = () => {
     setGameState(GameState.SELECTION);
     
     if (!isP2P && availableTeams.length > 0) {
-       // Pre-select new AI opponent for next round
        setOpponentTeam(availableTeams[Math.floor(Math.random() * availableTeams.length)]);
     } else {
-       // In P2P, reset opponent visible team until they pick again
        setOpponentTeam(null);
     }
   };
@@ -515,12 +503,74 @@ const GamePage: React.FC = () => {
   const handleVirtualDelete = () => setInputValue(prev => prev.slice(0, -1));
   const handleVirtualEnter = () => handleUserSubmit();
 
+  // --- MATCH END RENDER ---
+  if (gameState === GameState.MATCH_END) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] text-white p-4 font-pixel relative overflow-hidden">
+               <div className="absolute inset-0 bg-repeat opacity-10 pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%239C92AC\' fill-opacity=\'0.4\' fill-rule=\'evenodd\'%3E%3Ccircle cx=\'3\' cy=\'3\' r=\'3\'/%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'3\'/%3E%3C/g%3E%3C/svg%3E")' }}></div>
+               
+               <div className="z-10 text-center space-y-8 max-w-md w-full border-4 border-white p-6 bg-black shadow-[10px_10px_0px_#000]">
+                   {matchWinner === 'DISCONNECT' ? (
+                       <>
+                           <h1 className="text-4xl text-yellow-400 mb-4">OPPONENT LEFT</h1>
+                           <div className="text-6xl mb-4">🏳️</div>
+                           <p className="text-green-400 text-xl">YOU WIN BY FORFEIT!</p>
+                       </>
+                   ) : (
+                       <>
+                           <h1 className="text-4xl text-yellow-400 mb-4">MATCH OVER</h1>
+                           <div className="flex justify-center items-end gap-4 mb-6">
+                               <div className="text-center">
+                                   <div className="text-4xl font-bold">{scores.user}</div>
+                                   <div className="text-xs text-gray-500">YOU</div>
+                               </div>
+                               <div className="text-2xl text-gray-600 mb-2">-</div>
+                               <div className="text-center">
+                                   <div className="text-4xl font-bold">{scores.opponent}</div>
+                                   <div className="text-xs text-gray-500">{isP2P ? 'P2' : 'CPU'}</div>
+                               </div>
+                           </div>
+                           
+                           {matchWinner === 'USER' ? (
+                               <div className="animate-bounce">
+                                   <p className="text-green-400 text-2xl mb-2">VICTORY!</p>
+                                   <p className="text-xs text-gray-400">CHAMPION OF SERIE A</p>
+                               </div>
+                           ) : (
+                               <div>
+                                   <p className="text-red-500 text-2xl mb-2">DEFEAT</p>
+                                   <p className="text-xs text-gray-400">BETTER LUCK NEXT SEASON</p>
+                               </div>
+                           )}
+                       </>
+                   )}
+
+                   <div className="pt-8">
+                       <Button fullWidth onClick={() => {
+                           if(isP2P) p2pManager.destroy();
+                           navigate('/');
+                       }}>
+                           RETURN TO MENU
+                       </Button>
+                   </div>
+               </div>
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen flex flex-col max-w-2xl mx-auto bg-[#0F1419] font-mono text-white relative shadow-2xl overflow-hidden border-x-4 border-gray-800">
       
       {/* --- STICKY HUD --- */}
       <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl">
-         <div className="grid grid-cols-[1fr_auto_1fr] items-center p-3 min-h-[100px] sm:min-h-[120px]">
+         {/* Rounds Indicator */}
+         <div className="absolute top-0 left-0 right-0 flex justify-center -mt-1">
+            <div className="bg-black/80 px-3 py-1 rounded-b-lg border border-white/10 text-[9px] font-pixel text-yellow-400">
+                FIRST TO {targetWins} WINS
+            </div>
+         </div>
+
+         <div className="grid grid-cols-[1fr_auto_1fr] items-center p-3 pt-5 min-h-[100px] sm:min-h-[120px]">
              
              {/* PLAYER 1 */}
              <div className="flex flex-col items-start min-w-0 pr-2">
@@ -528,8 +578,11 @@ const GamePage: React.FC = () => {
                      <span className="text-xs text-cyan-400 font-pixel tracking-widest bg-black/40 px-2 py-1 rounded">
                         {isP2P ? 'YOU' : 'P1'}
                      </span>
-                     <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
-                        <span className="text-lg font-pixel text-white">{scores.user}</span>
+                     {/* Score Dots */}
+                     <div className="flex gap-1">
+                         {Array.from({length: targetWins}).map((_, i) => (
+                             <div key={i} className={`w-2 h-2 rounded-full ${i < scores.user ? 'bg-green-500 box-shadow-glow' : 'bg-gray-700'}`} />
+                         ))}
                      </div>
                  </div>
                  
@@ -566,8 +619,10 @@ const GamePage: React.FC = () => {
              {/* CPU / OPPONENT */}
              <div className="flex flex-col items-end min-w-0 pl-2">
                  <div className="flex items-center gap-2 mb-2">
-                     <div className="flex h-6 items-center bg-black/40 px-3 rounded border border-white/10">
-                        <span className="text-lg font-pixel text-white">{scores.opponent}</span>
+                     <div className="flex gap-1">
+                         {Array.from({length: targetWins}).map((_, i) => (
+                             <div key={i} className={`w-2 h-2 rounded-full ${i < scores.opponent ? 'bg-red-500 box-shadow-glow' : 'bg-gray-700'}`} />
+                         ))}
                      </div>
                      <span className={`text-xs font-pixel tracking-widest bg-black/40 px-2 py-1 rounded ${isP2P ? 'text-green-400' : 'text-red-400'}`}>
                         {isP2P ? 'P2' : 'CPU'}
@@ -575,7 +630,6 @@ const GamePage: React.FC = () => {
                  </div>
 
                  <div className="flex items-center gap-3 w-full justify-end">
-                      {/* P2P: Show Ready Status or Hidden Team */}
                       {isP2P && gameState === GameState.SELECTION ? (
                           isOpponentReady ? (
                               <div className="flex flex-col items-end">
@@ -593,7 +647,6 @@ const GamePage: React.FC = () => {
                               </span>
                           )
                       ) : opponentTeam ? (
-                         // Regular display (AI or P2P Playing/Reveal)
                          <>
                             <span className="font-pixel text-base sm:text-2xl text-white leading-tight drop-shadow-[2px_2px_0px_rgba(0,0,0,0.8)] text-right uppercase whitespace-nowrap truncate min-w-0">
                                 {opponentTeam.name}
