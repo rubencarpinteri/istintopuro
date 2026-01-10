@@ -134,7 +134,7 @@ const LobbyPage: React.FC = () => {
                                 value={roomCode}
                                 onChange={e => setRoomCode(e.target.value.toUpperCase())}
                                 className="flex-1 bg-black/20 border-2 border-green-500 p-3 text-center text-lg text-white/20 placeholder:text-white/20 outline-none focus:bg-black/40 min-w-0"
-                                placeholder="CODE"
+                                placeholder="CMG-XXXX"
                             />
                             <Button className="whitespace-nowrap" onClick={handleJoin}>JOIN</Button>
                         </div>
@@ -146,7 +146,7 @@ const LobbyPage: React.FC = () => {
                  {status === 'waiting' ? (
                      <>
                         <h3 className="text-xs text-blue-200 mb-2">SHARE THIS CODE</h3>
-                        <div className="text-4xl font-bold tracking-widest text-yellow-300 animate-pulse select-all cursor-pointer" onClick={() => navigator.clipboard.writeText(myRoomCode)}>
+                        <div className="text-2xl sm:text-4xl font-bold tracking-widest text-yellow-300 animate-pulse select-all cursor-pointer break-all" onClick={() => navigator.clipboard.writeText(myRoomCode)}>
                             {myRoomCode}
                         </div>
                         <p className="text-[10px] text-gray-400 mt-4">WAITING FOR CHALLENGER...</p>
