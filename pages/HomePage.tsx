@@ -22,10 +22,20 @@ const HomePage: React.FC = () => {
       {/* Main Actions */}
       <main className="flex-1 flex flex-col gap-6">
         <div className="space-y-4 px-4">
-            <Button fullWidth onClick={() => navigate('/game?mode=ai')} className="text-sm">
+            <Button 
+              fullWidth 
+              onClick={() => navigate('/game?mode=ai')} 
+              className="text-sm btn-retro-pulse"
+            >
               1P VS CPU
             </Button>
-            <Button fullWidth onClick={() => navigate('/lobby')} variant="primary" className="text-sm bg-purple-700 hover:bg-purple-600 border-purple-300">
+            <Button 
+              fullWidth 
+              onClick={() => navigate('/lobby')} 
+              variant="primary" 
+              className="text-sm bg-purple-700 hover:bg-purple-600 border-purple-300 btn-retro-pulse"
+              style={{ animationDelay: '1s' }}
+            >
               2P VS FRIEND
             </Button>
             <Button fullWidth onClick={() => navigate('/profile')} variant="secondary" className="text-sm border-gray-400">

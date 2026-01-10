@@ -67,6 +67,25 @@
         pointer-events: none;
         z-index: 9999;
       }
+
+      /* Nintendo/Arcade Style Pulsating Glow - Light only, no size change */
+      @keyframes retro-pulse {
+        0%, 100% {
+          filter: brightness(1);
+          box-shadow: 4px 4px 0px 0px #000000;
+          text-shadow: none;
+        }
+        50% {
+          filter: brightness(1.5) saturate(1.2);
+          box-shadow: 4px 4px 0px 0px #000000, 0 0 20px rgba(255, 255, 255, 0.5), inset 0 0 15px rgba(255,255,255,0.3);
+          text-shadow: 0 0 8px rgba(255,255,255,0.8);
+          border-color: #ffffff;
+        }
+      }
+
+      .btn-retro-pulse {
+        animation: retro-pulse 2s infinite ease-in-out;
+      }
     </style>
   <script type="importmap">
 {
