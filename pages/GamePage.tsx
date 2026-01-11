@@ -894,13 +894,26 @@ const GamePage: React.FC = () => {
                   </button>
                </div>
                
-               {/* Read-only Display Box */}
-               <div className="flex gap-2 items-center bg-gray-900 p-2 border-x-2 border-gray-600">
-                 <span className="font-pixel text-green-500 text-xs blink">{'>'}</span>
+               {/* Read-only Display Box + Send Button */}
+               <div className="flex items-center bg-gray-900 p-2 border-x-2 border-gray-600">
+                 <span className="font-pixel text-green-500 text-xs blink mr-2">{'>'}</span>
                  <div className="flex-1 bg-transparent text-white font-pixel text-lg h-8 flex items-center overflow-hidden whitespace-nowrap">
                    {inputValue}
                    <span className="animate-pulse ml-0.5 opacity-50">_</span>
                  </div>
+                 <button 
+                    onClick={(e) => handleUserSubmit(e)}
+                    disabled={!inputValue.trim() || isUserValidating.current}
+                    className={`
+                        ml-2 px-4 py-2 border-2 font-pixel text-[10px] uppercase tracking-wider
+                        transition-all shadow-[4px_4px_0px_rgba(0,0,0,0.5)] active:shadow-none active:translate-y-1
+                        ${!inputValue.trim() || isUserValidating.current 
+                            ? 'bg-gray-700 border-gray-500 text-gray-400 cursor-not-allowed' 
+                            : 'bg-green-600 border-green-400 text-white hover:bg-green-500 cursor-pointer'}
+                    `}
+                 >
+                    SEND
+                 </button>
                </div>
 
                {/* Virtual Keyboard */}
