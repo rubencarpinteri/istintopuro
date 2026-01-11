@@ -50,6 +50,7 @@ const GamePage: React.FC = () => {
   const targetWins = Math.ceil(maxRounds / 2);
 
   const [gameState, setGameState] = useState<GameState>(GameState.SELECTION);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   
   // Selection State
   const [focusedTeamId, setFocusedTeamId] = useState<string | null>(null); 
@@ -492,6 +493,15 @@ const GamePage: React.FC = () => {
     setOpponentTeam(null);
   };
 
+  const handleQuitRequest = () => {
+      setShowQuitConfirm(true);
+  };
+
+  const confirmQuit = () => {
+      if (isP2P) p2pManager.destroy();
+      navigate('/');
+  };
+
   const filteredTeams = useMemo(() => {
     if (!teamFilter) return availableTeams;
     return availableTeams.filter(t => t.name.toLowerCase().includes(teamFilter.toLowerCase()));
@@ -558,11 +568,27 @@ const GamePage: React.FC = () => {
       );
   }
 
+  // --- MAIN RENDER ---
+  // Using fixed height and inset-0 to ensure it fits mobile screens perfectly without scrolling the body
   return (
-    <div className="min-h-screen flex flex-col max-w-2xl mx-auto bg-[#0F1419] font-mono text-white relative shadow-2xl overflow-hidden border-x-4 border-gray-800">
+    <div className="fixed inset-0 h-[100dvh] w-full flex flex-col bg-[#0F1419] font-mono text-white relative shadow-2xl overflow-hidden sm:max-w-2xl sm:mx-auto sm:border-x-4 sm:border-gray-800">
       
+      {/* Quit Confirmation Modal */}
+      {showQuitConfirm && (
+        <div className="absolute inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+            <div className="bg-[#1a1a1a] border-4 border-white p-6 max-w-xs w-full text-center shadow-[10px_10px_0px_#000]">
+                <h3 className="font-pixel text-yellow-400 mb-4 text-sm">QUIT MATCH?</h3>
+                <p className="text-gray-400 text-xs mb-6 font-pixel">PROGRESS WILL BE LOST.</p>
+                <div className="flex gap-2">
+                    <Button fullWidth onClick={confirmQuit} variant="danger" className="text-xs">YES, QUIT</Button>
+                    <Button fullWidth onClick={() => setShowQuitConfirm(false)} variant="secondary" className="text-xs">CANCEL</Button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* --- STICKY HUD --- */}
-      <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl">
+      <div className="sticky top-0 z-50 bg-[#151530] border-b-4 border-b-white/20 shadow-xl shrink-0">
          {/* Rounds Indicator */}
          <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none">
              <div className="bg-black/80 px-3 py-1 rounded-full border border-white/10 text-[9px] font-pixel text-yellow-400 shadow-md">
@@ -677,7 +703,7 @@ const GamePage: React.FC = () => {
 
       {/* --- PHASE: SELECTION --- */}
       {gameState === GameState.SELECTION && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#0A0A1A] relative">
+        <div className="flex-1 flex flex-col overflow-hidden bg-[#0A0A1A] relative pb-safe">
           
           {/* Controls Bar */}
           <div className="p-3 gap-2 flex flex-col sm:flex-row border-b border-gray-800 shrink-0">
@@ -685,10 +711,7 @@ const GamePage: React.FC = () => {
                 <Button 
                     variant="secondary" 
                     className="px-3" 
-                    onClick={() => {
-                        if (isP2P) p2pManager.destroy();
-                        navigate('/');
-                    }}
+                    onClick={handleQuitRequest}
                 >
                 «
                 </Button>
@@ -709,7 +732,7 @@ const GamePage: React.FC = () => {
           </div>
 
           {/* Grid Area */}
-          <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-black">
+          <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-black pb-24">
              {!isDbLoaded && (
                  <div className="flex h-full items-center justify-center">
                     <div className="text-center text-gray-500 font-pixel text-[10px] animate-pulse">LOADING TEAMS...</div>
@@ -739,10 +762,9 @@ const GamePage: React.FC = () => {
                     );
                 })}
             </div>
-            <div className="h-20"></div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none">
+          <div className="absolute bottom-0 left-0 right-0 p-4 pb-safe bg-gradient-to-t from-black via-black/90 to-transparent pointer-events-none">
              <div className="pointer-events-auto">
                 <Button 
                     fullWidth 
@@ -851,21 +873,18 @@ const GamePage: React.FC = () => {
 
            {/* Input Area */}
            {gameState === GameState.PLAYING ? (
-             <div className="shrink-0 flex flex-col">
+             <div className="shrink-0 flex flex-col z-20 bg-[#0F1419] pb-safe">
                {/* Controls Row */}
                <div className="flex justify-between items-center px-2 py-1 bg-[#0A0A1A] border-y border-gray-700 text-[10px] font-pixel">
                   <button 
-                    onClick={() => {
-                        if (isP2P) p2pManager.destroy();
-                        navigate('/');
-                    }}
-                    className="text-gray-500 hover:text-white px-2 py-1"
+                    onClick={handleQuitRequest}
+                    className="text-gray-500 hover:text-white px-2 py-2"
                   >
                     « MENU
                   </button>
                   <button 
                     onClick={handleSurrender}
-                    className="text-red-500 hover:text-red-400 px-2 py-1 flex items-center gap-2"
+                    className="text-red-500 hover:text-red-400 px-2 py-2 flex items-center gap-2"
                     disabled={isUserValidating.current}
                   >
                     GIVE UP
@@ -893,7 +912,7 @@ const GamePage: React.FC = () => {
                />
              </div>
            ) : (
-             <div className="mt-auto space-y-3 shrink-0 pb-safe p-2">
+             <div className="mt-auto space-y-3 shrink-0 p-4 pb-safe bg-[#0F1419] z-20 border-t-4 border-gray-800">
                <div className={`p-3 text-center border-4 ${
                    messages.find(m => m.isSuccess) 
                     ? 'bg-green-900 border-green-500 text-green-100' 
@@ -910,11 +929,8 @@ const GamePage: React.FC = () => {
                  </h3>
                </div>
                <div className="grid grid-cols-2 gap-3">
-                    <Button fullWidth onClick={nextRound} className="h-12 text-xs">NEXT ROUND</Button>
-                    <Button fullWidth variant="secondary" onClick={() => {
-                        if (isP2P) p2pManager.destroy();
-                        navigate('/');
-                    }} className="h-12 text-xs">QUIT</Button>
+                    <Button fullWidth onClick={nextRound} className="h-14 text-xs">NEXT ROUND</Button>
+                    <Button fullWidth variant="secondary" onClick={handleQuitRequest} className="h-14 text-xs">QUIT</Button>
                </div>
              </div>
            )}

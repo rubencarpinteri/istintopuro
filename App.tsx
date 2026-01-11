@@ -16,6 +16,7 @@ const LoadingScreen = () => (
   </div>
 );
 
+// Main App Component
 const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0F1419] text-white overflow-hidden selection:bg-[#0066CC] selection:text-white">

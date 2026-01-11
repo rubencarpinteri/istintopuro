@@ -17,6 +17,8 @@
       html, body {
         touch-action: manipulation; /* Prevents double-tap to zoom */
         overscroll-behavior: none; /* Prevents bounce effects */
+        height: 100%;
+        overflow: hidden; /* Prevent body scroll */
       }
       body {
         font-family: 'VT323', monospace;
@@ -66,6 +68,11 @@
         background-size: 100% 4px;
         pointer-events: none;
         z-index: 9999;
+      }
+
+      /* Mobile Safe Area Utility */
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
       }
     </style>
   <script type="importmap">

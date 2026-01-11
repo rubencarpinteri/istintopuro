@@ -1,129 +1,167 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { storageService } from '../services/storageService';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
-  const [showCpuOptions, setShowCpuOptions] = useState(false);
-  const [selectedRounds, setSelectedRounds] = useState<number | null>(null);
+  
+  // View State: 'MENU' or 'SOLO_SETUP'
+  const [view, setView] = useState<'MENU' | 'SOLO_SETUP'>('MENU');
+  
+  // Solo Setup State
+  const [username, setUsername] = useState(storageService.getStats().username || 'PLAYER 1');
+  const [bestOf, setBestOf] = useState<number>(3);
 
-  const handleMatchSelect = (rounds: number) => {
-    if (selectedRounds !== null) return; // Prevent multiple clicks
-    setSelectedRounds(rounds);
+  const handleStartSolo = () => {
+    if (!username.trim()) return;
     
-    // Delay navigation to show the lock animation
+    // Save username preference
+    storageService.updateUsername(username);
+    
+    // Animate transition (optional delay)
     setTimeout(() => {
-        navigate(`/game?mode=ai&bestOf=${rounds}`);
-    }, 1200);
+        navigate(`/game?mode=ai&bestOf=${bestOf}`);
+    }, 200);
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen p-4 flex flex-col justify-center relative z-10">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0F1419] font-pixel text-white p-4 relative overflow-hidden">
       
-      {/* Retro Header */}
-      <header className="mb-12 text-center">
-        <div className="retro-box p-6 bg-blue-900 mb-6">
-            <h1 className="text-2xl font-pixel text-yellow-400 leading-normal text-shadow-black">
-            ISTINTO PURO<br/>
-            <span className="text-white text-lg">CALCIO</span>
-            </h1>
-        </div>
-        <p className="text-green-400 font-pixel text-[10px] tracking-widest blink uppercase">CLICK BUTTON TO START</p>
-      </header>
+      {/* Background Effect */}
+      <div className="absolute inset-0 pointer-events-none opacity-5" 
+           style={{ 
+             backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', 
+             backgroundSize: '24px 24px' 
+           }}>
+      </div>
 
-      {/* Main Actions */}
-      <main className="flex-1 flex flex-col gap-6">
-        <div className="space-y-4 px-4">
-            {showCpuOptions ? (
-              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-300 bg-black/40 p-4 rounded border border-gray-700">
-                <div className="text-center font-pixel text-xs text-yellow-400 mb-2">SELECT MATCH LENGTH</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[3, 5, 10].map(rounds => {
-                    const isLocked = selectedRounds === rounds;
-                    const isDisabled = selectedRounds !== null && !isLocked;
+      <div className="max-w-md w-full space-y-6 z-10">
+        
+        {/* Header - Visible in Menu */}
+        {view === 'MENU' && (
+          <header className="mb-12 text-center animate-in fade-in duration-500">
+            <div className="retro-box p-6 bg-blue-900 mb-6 transform rotate-1 hover:rotate-0 transition-transform">
+                <h1 className="text-3xl sm:text-4xl font-pixel text-yellow-400 leading-normal text-shadow-black">
+                ISTINTO PURO<br/>
+                <span className="text-white text-xl sm:text-2xl">CALCIO</span>
+                </h1>
+            </div>
+            <p className="text-green-400 font-pixel text-[10px] tracking-widest blink uppercase">
+                PRESS START BUTTON
+            </p>
+          </header>
+        )}
 
-                    return (
-                        <button 
-                            key={rounds}
-                            onClick={() => handleMatchSelect(rounds)}
-                            disabled={selectedRounds !== null}
-                            className={`
-                                relative font-pixel text-[10px] py-3 border-4 uppercase tracking-widest transition-all duration-200
-                                ${isLocked 
-                                    ? 'bg-yellow-900/80 border-yellow-400 text-yellow-100 shadow-[0_0_15px_rgba(250,204,21,0.6)] scale-105 z-20' 
-                                    : isDisabled
-                                        ? 'bg-gray-800 border-gray-700 text-gray-600 shadow-none opacity-50 cursor-not-allowed'
-                                        : 'bg-blue-900 border-slate-400 text-white shadow-[4px_4px_0px_0px_#000] hover:bg-blue-800 hover:border-slate-200 hover:-translate-y-1 active:translate-y-0 active:shadow-none'
-                                }
-                            `}
-                        >
-                            BO{rounds}
-                            {isLocked && (
-                                <>
-                                    <div className="absolute right-1 top-1/2 -translate-y-1/2 rotate-[-10deg] border-2 border-yellow-400 px-1 bg-black/80 z-20 shadow-lg">
-                                        <span className="font-pixel text-[6px] text-yellow-400 animate-pulse">LOCKED</span>
-                                    </div>
-                                    {/* Scanline overlay */}
-                                    <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-0 bg-[length:100%_2px,3px_100%]"></div>
-                                </>
-                            )}
-                        </button>
-                    );
-                  })}
-                </div>
+        {/* --- MAIN MENU VIEW --- */}
+        {view === 'MENU' && (
+           <main className="flex flex-col gap-4 animate-in slide-in-from-bottom-8 duration-500">
+              <Button 
+                fullWidth 
+                onClick={() => setView('SOLO_SETUP')} 
+                className="text-base h-16 border-blue-400"
+              >
+                1P VS CPU
+              </Button>
+
+              <Button 
+                fullWidth 
+                onClick={() => navigate('/lobby')} 
+                variant="primary" 
+                className="text-base h-16 bg-purple-700 hover:bg-purple-600 border-purple-300 shadow-[8px_8px_0px_#2a0a45]"
+              >
+                2P VS FRIEND
+              </Button>
+              
+              <div className="grid grid-cols-2 gap-4 mt-2">
                 <Button 
                     fullWidth 
-                    variant="ghost" 
-                    onClick={() => {
-                        if (selectedRounds === null) setShowCpuOptions(false);
-                    }}
-                    disabled={selectedRounds !== null}
-                    className="text-[10px] py-2 text-gray-400 hover:text-white mt-2"
+                    onClick={() => navigate('/profile')} 
+                    variant="secondary" 
+                    className="text-xs border-gray-400"
                 >
-                    CANCEL
+                  MEMORY CARD
+                </Button>
+                <Button 
+                    fullWidth 
+                    onClick={() => navigate('/convert')} 
+                    variant="ghost" 
+                    className="text-xs border-dashed border-gray-600 text-gray-500 hover:text-white"
+                >
+                  DB EDITOR
                 </Button>
               </div>
-            ) : (
-                <Button 
-                  fullWidth 
-                  onClick={() => setShowCpuOptions(true)} 
-                  className="text-base"
-                >
-                  1P VS CPU
-                </Button>
-            )}
 
-            <Button 
-              fullWidth 
-              onClick={() => navigate('/lobby')} 
-              variant="primary" 
-              className="text-base bg-purple-700 hover:bg-purple-600 border-purple-300"
-              disabled={selectedRounds !== null}
-            >
-              2P VS FRIEND
-            </Button>
-            <Button 
-                fullWidth 
-                onClick={() => navigate('/profile')} 
-                variant="secondary" 
-                className="text-base border-gray-400"
-                disabled={selectedRounds !== null}
-            >
-              MEMORY CARD (STATS)
-            </Button>
-        </div>
-      </main>
+              <footer className="text-center text-[10px] text-gray-600 mt-8 font-pixel">
+                <p>© 1988-2026 OFF SPORTS</p>
+              </footer>
+           </main>
+        )}
 
-      <footer className="text-center text-xs text-gray-600 py-6 font-pixel">
-        <p>© 1988-2026 OFF SPORTS</p>
-        <button 
-          onClick={() => navigate('/convert')} 
-          className="mt-2 hover:text-white underline decoration-dashed"
-          disabled={selectedRounds !== null}
-        >
-          [DB EDITOR]
-        </button>
-      </footer>
+        {/* --- SOLO SETUP VIEW --- */}
+        {view === 'SOLO_SETUP' && (
+           <div className="animate-in zoom-in-95 duration-300 w-full space-y-6">
+              <div className="text-center mb-6">
+                 <h2 className="text-2xl text-yellow-400 mb-2">SINGLE PLAYER</h2>
+                 <p className="text-xs text-gray-400">CONFIGURE MATCH</p>
+              </div>
+
+              {/* Username Input */}
+              <div className="space-y-2">
+                <label className="text-xs text-blue-300 block text-center">YOUR NICKNAME</label>
+                <input 
+                  type="text" 
+                  value={username}
+                  onChange={e => setUsername(e.target.value.toUpperCase())}
+                  maxLength={10}
+                  className="w-full bg-black border-4 border-blue-800 p-4 text-center text-xl text-white outline-none focus:border-blue-500 font-pixel shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]"
+                  placeholder="PLAYER 1"
+                />
+              </div>
+
+              {/* Match Length */}
+              <div className="p-6 border-2 border-dashed border-gray-700 bg-black/40 space-y-4">
+                 <label className="text-xs text-gray-400 block text-center">MATCH LENGTH</label>
+                 <div className="flex gap-3 justify-center">
+                     {[3, 5, 10].map(val => (
+                         <button
+                             key={val}
+                             onClick={() => setBestOf(val)}
+                             className={`
+                                flex-1 py-3 border-2 font-pixel text-sm transition-all
+                                ${bestOf === val 
+                                    ? 'bg-yellow-600 border-yellow-300 text-white shadow-[0_0_15px_rgba(234,179,8,0.4)] scale-105' 
+                                    : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-500'}
+                             `}
+                         >
+                             BO{val}
+                         </button>
+                     ))}
+                 </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-4 space-y-3">
+                 <Button 
+                    fullWidth 
+                    onClick={handleStartSolo} 
+                    variant="primary"
+                    className="h-16 text-lg bg-green-700 border-green-400 hover:bg-green-600 shadow-[8px_8px_0px_#003300]"
+                 >
+                    START MATCH
+                 </Button>
+                 
+                 <button 
+                    onClick={() => setView('MENU')} 
+                    className="w-full text-center text-xs text-gray-500 hover:text-white py-4"
+                 >
+                    « CANCEL
+                 </button>
+              </div>
+           </div>
+        )}
+
+      </div>
     </div>
   );
 };

@@ -17,11 +17,13 @@ interface KeyProps {
 
 const Key: React.FC<KeyProps> = ({ char, onClick, wide = false, variant = 'default', disabled }) => {
   let bgColor = 'bg-gray-700 text-white active:bg-gray-600';
+  let height = 'h-12 sm:h-14'; 
   
   if (variant === 'action') {
     bgColor = 'bg-gray-600 text-gray-200 active:bg-gray-500';
   } else if (variant === 'confirm') {
     bgColor = 'bg-green-600 text-white active:bg-green-500 border-b-4 border-green-800 active:border-b-0 active:translate-y-[4px] shadow-none';
+    height = 'h-12 sm:h-14';
   }
 
   return (
@@ -35,7 +37,7 @@ const Key: React.FC<KeyProps> = ({ char, onClick, wide = false, variant = 'defau
       type="button"
       className={`
         ${wide ? 'flex-[1.5] text-xs sm:text-sm' : 'flex-1 text-sm sm:text-lg'}
-        h-12 sm:h-14 
+        ${height}
         mx-0.5 sm:mx-1 rounded
         font-bold 
         ${variant !== 'confirm' ? 'shadow-[0_3px_0_0_rgba(0,0,0,0.4)] active:shadow-none active:translate-y-[3px]' : ''}
@@ -56,18 +58,25 @@ export const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({ onChar, onDele
   const row3 = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
 
   return (
-    <div className="w-full bg-[#151530] p-2 pb-safe select-none border-t border-gray-800">
+    <div className="w-full bg-[#151530] p-2 pt-3 select-none border-t border-gray-800 pb-12 sm:pb-4">
       <div className="max-w-xl mx-auto flex flex-col gap-2">
+        {/* Row 1 */}
         <div className="flex w-full">
           {row1.map(char => <Key key={char} char={char} onClick={() => onChar(char)} disabled={disabled} />)}
         </div>
-        <div className="flex w-full px-4 sm:px-8">
-          {row2.map(char => <Key key={char} char={char} onClick={() => onChar(char)} disabled={disabled} />)}
-        </div>
+        
+        {/* Row 2: Indented, Delete at end */}
         <div className="flex w-full">
-          {row3.map(char => <Key key={char} char={char} onClick={() => onChar(char)} disabled={disabled} />)}
-          <Key char="⌫" wide variant="action" onClick={onDelete} disabled={disabled} />
-          <Key char="ENTER" wide variant="confirm" onClick={onEnter} disabled={disabled} />
+            <div className="flex-[0.5]" />
+            {row2.map(char => <Key key={char} char={char} onClick={() => onChar(char)} disabled={disabled} />)}
+            <Key char="⌫" wide variant="action" onClick={onDelete} disabled={disabled} />
+        </div>
+
+        {/* Row 3: More Indented, Enter at end */}
+        <div className="flex w-full">
+            <div className="flex-[1.5]" />
+            {row3.map(char => <Key key={char} char={char} onClick={() => onChar(char)} disabled={disabled} />)}
+            <Key char="ENTER" wide variant="confirm" onClick={onEnter} disabled={disabled} />
         </div>
       </div>
     </div>
